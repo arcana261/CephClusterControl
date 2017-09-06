@@ -4,6 +4,7 @@ const ClientLoop = require('./lib/rpc/ClientLoop');
 const Proxy = require('./lib/proxy');
 const UTCClock = require('utc-clock');
 const AgeReporter = require('./lib/utils/AgeReporter');
+const TablePrinter = require('./lib/utils/TablePrinter');
 
 /**
  * @param {{rabbit: String, heartbeat: Number, timeout: Number}} argv
@@ -77,7 +78,7 @@ const yargs = require('yargs')
       }
     }
   }))
-  .command('rbd <ls|lshost|du|info|create> [image]', 'view information about rbd images', {
+  .command('rbd <ls|lshost|du|info|create|showmapped|mount> [image] [location]', 'view information about rbd images', {
     pool: {
       describe: 'RBD pool, default is any pool "*"',
       default: '*',
@@ -108,6 +109,21 @@ const yargs = require('yargs')
       describe: 'additional arguments to pass to mkfs',
       default: '',
       requiresArg: false
+    },
+    host: {
+      describe: 'send command to specific host, e.g. used in mapping and mounting',
+      default: '*',
+      requiresArg: true
+    },
+    'read-only': {
+      describe: 'mount target image as readonly',
+      default: false,
+      requiresArg: false
+    },
+    permanent: {
+      describe: 'mount target image in designated host permanently during reboots',
+      default: false,
+      requiresArg: false
     }
   }, subcommand({
     ls: async (argv, proxy) => {
@@ -133,6 +149,11 @@ const yargs = require('yargs')
         }
         else {
           result.sort((x, y) => x.timestamp - y.timestamp);
+
+          TablePrinter.print(result, [{key: 'Agent', value: x => `${x.hostname}@${x.instanceId}`},
+            {key: 'Provisioned', value: x => `${x.provisioned}MB`},
+            {key: 'Used', value: x => `${x.used}MB`},
+            {key: 'Query Age', value: x => `${AgeReporter.format(x.timestamp, (new UTCClock()).now.ms())}`}]);
 
           console.log('AGENT\tPROVISIONED\tUSED\tQUERIED');
 
@@ -188,6 +209,22 @@ const yargs = require('yargs')
       });
 
       console.log(`created image: ${name}`);
+    },
+
+    showmapped: async (argv, proxy) => {
+      const result = await proxy.rbd.getMapped({host: argv.host, id: argv.id});
+
+      TablePrinter.print(result, [{key: 'Host', value: x => `${x.hostname}@${x.instanceId}`},
+        {key: 'Image', value: x => x.image}, {key: 'Id', value: x => `${x.rbdId}`},
+        {key: 'Snap', value: x => x.snap || ''}, {key: 'Device', value: x => x.device},
+        {key: 'Size', value: x => (x.diskSize && `${x.diskSize}MB`) || ''},
+        {key: 'Used', value: x => (x.diskUsed && `${x.diskUsed}MB`) || ''},
+        {key: 'MountPoint', value: x => x.mountPoint || ''},
+        {key: 'FileSystem', value: x => x.fileSystem || ''}]);
+    },
+
+    mount: async (argv, proxy) => {
+
     }
   }))
   .command('lshost', 'view all RPC host agents', { }, command(async (argv, proxy) => {

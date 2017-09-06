@@ -5,19 +5,12 @@ const CephClient = require('./lib/ceph');
 const RbdClient = require('./lib/rbd');
 const log = require('logging').default('server-main');
 const path = require('path');
-const mkdirp = require('mkdirp');
+const MkDir = require('./lib/utils/MkDir');
 const LevelDb = require('./lib/utils/LevelDb');
 const ErrorFormatter = require('./lib/utils/ErrorFormatter');
 
 function ensureDirectory(p) {
-  return new Promise((resolve, reject) => mkdirp(path.dirname(p), err => {
-    if (err) {
-      reject(err);
-    }
-    else {
-      resolve();
-    }
-  }));
+  return MkDir.path(path.dirname(p));
 }
 
 const yargs = require('yargs')
@@ -83,11 +76,13 @@ async function main() {
   if (yargs._.indexOf('rbd') >= 0) {
     inits.push(RbdClient.capable().then(async result => {
       if (result) {
-        server.addHandler('rbd', new RbdClient({db: db}));
+        const client = new RbdClient({db: db});
+        server.addHandler('rbd', client);
 
         await server.addType('rbd');
 
         for (const fmt of await RbdClient.supportedFormatts()) {
+          server.addHandler(`rbd:${fmt}`, client);
           await server.addType(`rbd:${fmt}`);
         }
       }
