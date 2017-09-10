@@ -5,6 +5,7 @@ const Proxy = require('./lib/proxy');
 const UTCClock = require('utc-clock');
 const AgeReporter = require('./lib/utils/AgeReporter');
 const TablePrinter = require('./lib/utils/TablePrinter');
+const SizeParser = require('./lib/utils/SizeParser');
 
 /**
  * @param {{rabbit: String, heartbeat: Number, timeout: Number}} argv
@@ -66,6 +67,12 @@ function subcommand(opts) {
   });
 }
 
+function patience() {
+  console.log('This may take minutes to complete');
+  console.log('Please be patient...');
+  console.log();
+}
+
 const yargs = require('yargs')
   .command('ceph <lspool|lshost>', 'view information about ceph cluster', { }, subcommand({
     lspool: async (argv, proxy) => {
@@ -78,7 +85,7 @@ const yargs = require('yargs')
       }
     }
   }))
-  .command('rbd <ls|lshost|du|info|create|showmapped|mount> [image] [location]', 'view information about rbd images', {
+  .command('rbd <ls|lshost|du|info|create|showmapped|mount|umount|automount> [image] [location]', 'view information about rbd images', {
     pool: {
       describe: 'RBD pool, default is any pool "*"',
       default: '*',
@@ -101,7 +108,7 @@ const yargs = require('yargs')
       requiresArg: true
     },
     size: {
-      describe: 'size of new RBD image to create in MB',
+      describe: 'size of new RBD image to create. e.g. 100MB',
       default: 0,
       requiresArg: true
     },
@@ -141,36 +148,26 @@ const yargs = require('yargs')
         return false;
       }
 
+      let result = [];
+
       if (!argv.refresh) {
-        const result = await proxy.rbd.lastKnownDiskUsage({image: argv.image, pool: argv.pool, id: argv.id});
-
-        if (result.length < 1) {
-          console.log('WARN: no data available, supply --refresh to force calculation');
-        }
-        else {
-          result.sort((x, y) => x.timestamp - y.timestamp);
-
-          TablePrinter.print(result, [{key: 'Agent', value: x => `${x.hostname}@${x.instanceId}`},
-            {key: 'Provisioned', value: x => `${x.provisioned}MB`},
-            {key: 'Used', value: x => `${x.used}MB`},
-            {key: 'Query Age', value: x => `${AgeReporter.format(x.timestamp, (new UTCClock()).now.ms())}`}]);
-
-          console.log('AGENT\tPROVISIONED\tUSED\tQUERIED');
-
-          result.forEach(x =>
-            console.log(`${x.hostname}@${x.instanceId}\t${x.provisioned}MB\t` +
-              `${x.used}MB\t${AgeReporter.format(x.timestamp, (new UTCClock()).now.ms())}`));
-        }
+        result = await proxy.rbd.lastKnownDiskUsage({image: argv.image, pool: argv.pool, id: argv.id});
       }
       else {
-        console.log('This may take minutes to complete');
-        console.log('Please be patient...');
+        patience();
+        result = await proxy.rbd.updateDiskUsage({image: argv.image, pool: argv.pool, id: argv.id});
+      }
 
-        const result = await proxy.rbd.updateDiskUsage({image: argv.image, pool: argv.pool, id: argv.id});
+      if (result.length < 1) {
+        console.log('WARN: no data available, supply --refresh to force calculation');
+      }
+      else {
+        result.sort((x, y) => x.timestamp - y.timestamp);
 
-        console.log('PROVISIONED\tUSED\tQUERIED');
-        console.log(`${result.provisioned}MB\t${result.used}MB\t` +
-          `${AgeReporter.format(result.timestamp, (new UTCClock()).now.ms())}`);
+        TablePrinter.print(result, [{key: 'Agent', value: x => `${x.hostname}@${x.instanceId}`},
+          {key: 'Provisioned', value: x => SizeParser.stringify(x.provisioned)},
+          {key: 'Used', value: x => SizeParser.stringify(x.used)},
+          {key: 'Query Age', value: x => `${AgeReporter.format(x.timestamp, (new UTCClock()).now.ms())}`}]);
       }
     },
 
@@ -195,9 +192,11 @@ const yargs = require('yargs')
         return false;
       }
 
-      if (argv.size < 1) {
+      if (!argv.size) {
         return false;
       }
+
+      patience();
 
       const name = await proxy.rbd.create({
         image: argv.image,
@@ -205,26 +204,79 @@ const yargs = require('yargs')
         format: argv.format,
         formatOptions: argv.formatOptions,
         id: argv.id,
-        size: argv.size
+        size: SizeParser.parseMegabyte(argv.size)
       });
 
       console.log(`created image: ${name}`);
     },
 
     showmapped: async (argv, proxy) => {
+      patience();
+
       const result = await proxy.rbd.getMapped({host: argv.host, id: argv.id});
 
       TablePrinter.print(result, [{key: 'Host', value: x => `${x.hostname}@${x.instanceId}`},
         {key: 'Image', value: x => x.image}, {key: 'Id', value: x => `${x.rbdId}`},
         {key: 'Snap', value: x => x.snap || ''}, {key: 'Device', value: x => x.device},
-        {key: 'Size', value: x => (x.diskSize && `${x.diskSize}MB`) || ''},
-        {key: 'Used', value: x => (x.diskUsed && `${x.diskUsed}MB`) || ''},
+        {key: 'Size', value: x => (x.diskSize && SizeParser.stringify(x.diskSize)) || ''},
+        {key: 'Used', value: x => (x.diskUsed && SizeParser.stringify(x.diskUsed)) || ''},
         {key: 'MountPoint', value: x => x.mountPoint || ''},
         {key: 'FileSystem', value: x => x.fileSystem || ''}]);
     },
 
     mount: async (argv, proxy) => {
+      if (!argv.image) {
+        return false;
+      }
 
+      patience();
+
+      const result = await proxy.rbd.mount({
+        image: argv.image,
+        host: argv.host,
+        pool: argv.pool,
+        target: argv.location,
+        fileSystem: argv.format,
+        readonly: argv['read-only'],
+        permanent: argv.permanent,
+        id: argv.id
+      });
+
+      TablePrinter.print([result], [{key: 'Host', value: x => x.host},
+        {key: 'Location', value: x => x.location}]);
+    },
+
+    umount: async (argv, proxy) => {
+      if (!argv.image) {
+        return false;
+      }
+
+      patience();
+
+      const result = await proxy.rbd.umount({
+        image: argv.image,
+        host: argv.host,
+        pool: argv.pool,
+        id: argv.id
+      });
+
+      if (result.length < 1) {
+        console.log('WARN: Image failed to unmount from nodes or is not already mounted.');
+      }
+      else {
+        TablePrinter.print(result, [{key: 'Host', value: x => x.host},
+          {key: 'Mount Point', value: x => x.mountPoint || ''}]);
+      }
+    },
+
+    automount: async (argv, proxy) => {
+      patience();
+
+      const result = await proxy.rbd.automount({host: argv.host});
+
+      for (const item of result) {
+        console.log(`${item.host} OK!`);
+      }
     }
   }))
   .command('lshost', 'view all RPC host agents', { }, command(async (argv, proxy) => {
