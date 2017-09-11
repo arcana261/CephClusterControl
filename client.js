@@ -85,7 +85,7 @@ const yargs = require('yargs')
       }
     }
   }))
-  .command('rbd <ls|lshost|du|info|create|showmapped|mount|umount|automount> [image] [location]', 'view information about rbd images', {
+  .command('rbd <ls|lshost|du|info|create|showmapped|mount|umount|automount|rm> [image] [location]', 'view information about rbd images', {
     pool: {
       describe: 'RBD pool, default is any pool "*"',
       default: '*',
@@ -179,12 +179,14 @@ const yargs = require('yargs')
       const result = await proxy.rbd.info({image: argv.image, pool: argv.pool, id: argv.id});
 
       console.log(`rbd image '${result.image}':`);
-      console.log(`\tsize ${result.size} MB in ${result.objectCount} objects`);
-      console.log(`\torder ${result.order} (${result.objectSize} MB objects)`);
+      console.log(`\tsize ${SizeParser.stringify(result.size)} in ${result.objectCount} objects`);
+      console.log(`\torder ${result.order} (${SizeParser.stringify(result.objectSize / 1024)} objects)`);
       console.log(`\tblock_name_prefix: ${result.blockNamePrefix}`);
       console.log(`\tformat: ${result.format}`);
       console.log(`\tfeatures: ${result.features.join(', ')}`);
       console.log(`\tflags: ${result.flags.join(', ')}`);
+      console.log(`\tused: ${result.diskUsed ? SizeParser.stringify(result.diskUsed) : ''}`);
+      console.log(`\tfileSystem: ${result.fileSystem || ''}`);
     },
 
     create: async (argv, proxy) => {
@@ -221,6 +223,7 @@ const yargs = require('yargs')
         {key: 'Size', value: x => (x.diskSize && SizeParser.stringify(x.diskSize)) || ''},
         {key: 'Used', value: x => (x.diskUsed && SizeParser.stringify(x.diskUsed)) || ''},
         {key: 'MountPoint', value: x => x.mountPoint || ''},
+        {key: 'ReadOnly', value: x => x.readOnly ? 'RO' : 'RW'},
         {key: 'FileSystem', value: x => x.fileSystem || ''}]);
     },
 
@@ -243,7 +246,14 @@ const yargs = require('yargs')
       });
 
       TablePrinter.print([result], [{key: 'Host', value: x => x.host},
-        {key: 'Location', value: x => x.location}]);
+        {key: 'Image', value: x => x.image},
+        {key: 'Id', value: x => x.rbdId},
+        {key: 'Device', value: x => x.device},
+        {key: 'Size', value: x => x.diskSize ? SizeParser.stringify(x.diskSize) : ''},
+        {key: 'Used', value: x => x.diskUsed ? SizeParser.stringify(x.diskUsed) : ''},
+        {key: 'MountPoint', value: x => x.location},
+        {key: 'ReadOnly', value: x => x.readOnly ? 'RO' : 'RW'},
+        {key: 'FileSystem', value: x => x.fileSystem || ''}]);
     },
 
     umount: async (argv, proxy) => {
@@ -272,12 +282,27 @@ const yargs = require('yargs')
     automount: async (argv, proxy) => {
       patience();
 
-      const result = await proxy.rbd.automount({host: argv.host});
+      const result = (await proxy.rbd.automount({host: argv.host}))
+        .map(x => x.mountPoints.map(y => Object.assign(y, {host: x.host})))
+        .reduce((prev, cur) => prev.concat(cur), []);
 
-      for (const item of result) {
-        console.log(`${item.host} OK!`);
-      }
+      TablePrinter.print(result, [{key: 'Host', value: x => x.host},
+        {key: 'Image', value: x => x.image},
+        {key: 'Id', value: x => x.rbdId},
+        {key: 'Device', value: x => x.device},
+        {key: 'Size', value: x => x.diskSize ? SizeParser.stringify(x.diskSize) : ''},
+        {key: 'Used', value: x => x.diskUsed ? SizeParser.stringify(x.diskUsed) : ''},
+        {key: 'MountPoint', value: x => x.location},
+        {key: 'ReadOnly', value: x => x.readOnly ? 'RO' : 'RW'},
+        {key: 'FileSystem', value: x => x.fileSystem}]);
+    },
+
+    rm: async (argv, proxy) => {
+      patience();
+
+      await proxy.rbd.rm({image: argv.image, pool: argv.pool, id: argv.id});
     }
+
   }))
   .command('lshost', 'view all RPC host agents', { }, command(async (argv, proxy) => {
     for (let host of (await proxy.hosts())) {

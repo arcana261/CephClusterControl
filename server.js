@@ -85,6 +85,12 @@ async function main() {
           server.addHandler(`rbd:${fmt}`, client);
           await server.addType(`rbd:${fmt}`);
         }
+
+        log.info('checking volumes to automount...');
+
+        for (const mountPoint of (await client.automount()).mountPoints) {
+          log.info(`auto-mount successful for ${mountPoint.image} on ${mountPoint.target}`);
+        }
       }
       else {
         log.warn('Plugin: "rbd" requested but could not be enabled');
