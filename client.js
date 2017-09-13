@@ -6,6 +6,7 @@ const UTCClock = require('utc-clock');
 const AgeReporter = require('./lib/utils/AgeReporter');
 const TablePrinter = require('./lib/utils/TablePrinter');
 const SizeParser = require('./lib/utils/SizeParser');
+const CephAuthUtils = require('./lib/utils/CephAuthUtils');
 
 /**
  * @param {{rabbit: String, heartbeat: Number, timeout: Number}} argv
@@ -73,8 +74,36 @@ function patience() {
   console.log();
 }
 
+/**
+ * @param {*} argv
+ * @returns {CephCaps|null}
+ */
+function parseCapsArgv(argv) {
+  if (!argv.args || (argv.args.length % 2) !== 0) {
+    return null;
+  }
+
+  const required = {
+    mon: [],
+    osd: [],
+    mds: []
+  };
+
+  for (let i = 0; i < argv.args.length; i += 2) {
+    required[argv.args[i]] = required[argv.args[i]].concat(CephAuthUtils.parseEntityCaps(argv.args[i + 1]));
+  }
+
+  return required;
+}
+
 const yargs = require('yargs')
-  .command('ceph <lspool|lshost>', 'view information about ceph cluster', { }, subcommand({
+  .command('ceph <lspool|lshost|ls-auth|chk-auth|add-auth|get-auth|save-auth|del-auth|get-quota|set-quota|create-pool|del-pool|df> [client] [args..]', 'view information about ceph cluster', {
+    'yes-i-really-really-mean-it': {
+      describe: 'provide it for deleting pools',
+      default: false,
+      requiresArg: false
+    }
+  }, subcommand({
     lspool: async (argv, proxy) => {
       console.log((await proxy.ceph.pool.ls()).join(', '));
     },
@@ -83,9 +112,133 @@ const yargs = require('yargs')
       for (let host of (await proxy.ceph.hosts())) {
         console.log(`${host.hostname}@${host.version} [${host.types.join(', ')}]`)
       }
+    },
+
+    'ls-auth': async (argv, proxy) => {
+      for (const [client, cephAuthEntry] of Object.entries(await proxy.ceph.auth.ls())) {
+        console.log(client);
+
+        if (cephAuthEntry.key) {
+          console.log(`\tkey: ${cephAuthEntry.key}`);
+        }
+
+        for (const [entity, entityCaps] of Object.entries(cephAuthEntry.caps)) {
+          if (entityCaps.length > 0) {
+            console.log(`\t[${entity}]: ${CephAuthUtils.stringifyEntityCaps(entityCaps)}`);
+          }
+        }
+      }
+    },
+
+    'chk-auth': async (argv, proxy) => {
+      if (!argv.client) {
+        return false;
+      }
+
+      const required = parseCapsArgv(argv);
+
+      if (required === null) {
+        return false;
+      }
+
+      if (!(await proxy.ceph.auth.checkPermission(argv.client, required))) {
+        console.log('denied');
+      }
+      else {
+        console.log('permitted');
+      }
+    },
+
+    'add-auth': async (argv, proxy) => {
+      if (!argv.client) {
+        return false;
+      }
+
+      const required = parseCapsArgv(argv);
+
+      if (required === null) {
+        return false;
+      }
+
+      await proxy.ceph.auth.add(argv.client, required);
+    },
+
+    'get-auth': async (argv, proxy) => {
+      if (!argv.client) {
+        return false;
+      }
+
+      console.log(await proxy.ceph.auth.get(argv.client));
+    },
+
+    'del-auth': async (argv, proxy) => {
+      if (!argv.client) {
+        return false;
+      }
+
+      await proxy.ceph.auth.del(argv.client);
+    },
+
+    'save-auth': async (argv, proxy) => {
+      if (!argv.client) {
+        return false;
+      }
+
+      console.log(await proxy.ceph.auth.save(argv.client));
+    },
+
+    'get-quota': async (argv, proxy) => {
+      if (!argv.client) {
+        return false;
+      }
+
+      const quota = await proxy.ceph.pool.getQuota(argv.client);
+
+      if (quota === null) {
+        console.log('N/A');
+      }
+      else {
+        console.log(SizeParser.stringify(quota));
+      }
+    },
+
+    'set-quota': async (argv, proxy) => {
+      if (!argv.client || argv.args.length !== 1) {
+        return false;
+      }
+
+      await proxy.ceph.pool.setQuota(argv.client, SizeParser.parseMegabyte(argv.args[0]));
+    },
+
+    'create-pool': async (argv, proxy) => {
+      if (!argv.client || argv.args.length !== 2) {
+        return false;
+      }
+
+      await proxy.ceph.pool.create(argv.client, parseInt(argv.args[0]), parseInt(argv.args[1]));
+    },
+
+    'del-pool': async (argv, proxy) => {
+      if (!argv.client || argv.args.length !== 1 || argv.args[0] !== argv.client || !argv['yes-i-really-really-mean-it']) {
+        return false;
+      }
+
+      await proxy.ceph.pool.del(argv.client);
+    },
+
+    df: async (argv, proxy) => {
+      const result = await proxy.ceph.pool.df();
+
+      TablePrinter.print(
+        Object.entries(result)
+          .sort(([leftName, leftData], [rightName, rightData]) =>
+            rightData.used - leftData.used),
+        [{key: 'Pool', value: ([name, data]) => name},
+        {key: 'Used', value: ([name, data]) => SizeParser.stringify(data.used)},
+        {key: 'Objects', value: ([name, data]) => data.objects}]);
     }
   }))
-  .command('rbd <ls|lshost|du|info|create|showmapped|mount|umount|automount|rm> [image] [location]', 'view information about rbd images', {
+  .command('rbd <ls|lshost|du|info|create|showmapped|mount|umount|automount|rm|extend> [image] [location]', 'view information about rbd images', {
     pool: {
       describe: 'RBD pool, default is any pool "*"',
       default: '*',
@@ -301,8 +454,22 @@ const yargs = require('yargs')
       patience();
 
       await proxy.rbd.rm({image: argv.image, pool: argv.pool, id: argv.id});
-    }
+    },
 
+    extend: async (argv, proxy) => {
+      if (!argv.image || !argv.size) {
+        return false;
+      }
+
+      patience();
+
+      await proxy.rbd.extend({
+        image: argv.image,
+        size: SizeParser.parseMegabyte(argv.size),
+        pool: argv.pool,
+        id: argv.id
+      });
+    }
   }))
   .command('lshost', 'view all RPC host agents', { }, command(async (argv, proxy) => {
     for (let host of (await proxy.hosts())) {
