@@ -7,6 +7,8 @@ const AgeReporter = require('./lib/utils/AgeReporter');
 const TablePrinter = require('./lib/utils/TablePrinter');
 const SizeParser = require('./lib/utils/SizeParser');
 const CephAuthUtils = require('./lib/utils/CephAuthUtils');
+const ImageNameParser = require('./lib/utils/ImageNameParser');
+const SambaAuthUtils = require('./lib/utils/SambaAuthUtils');
 
 /**
  * @param {{rabbit: String, heartbeat: Number, timeout: Number}} argv
@@ -284,6 +286,11 @@ const yargs = require('yargs')
       describe: 'mount target image in designated host permanently during reboots',
       default: false,
       requiresArg: false
+    },
+    force: {
+      describe: 'used to force unmounting rbd device',
+      default: false,
+      requiresArg: false
     }
   }, subcommand({
     ls: async (argv, proxy) => {
@@ -420,7 +427,8 @@ const yargs = require('yargs')
         image: argv.image,
         host: argv.host,
         pool: argv.pool,
-        id: argv.id
+        id: argv.id,
+        force: argv.force
       });
 
       if (result.length < 1) {
@@ -469,6 +477,266 @@ const yargs = require('yargs')
         pool: argv.pool,
         id: argv.id
       });
+    }
+  }))
+  .command('samba <add|ls|del|lshost|add-user|del-user|edit|rename|edit-user|details> [share]', 'manage samba shares over RBD', {
+    image: {
+      describe: 'rbd image to use for mapping of samba share',
+      default: '-',
+      requiresArg: true
+    },
+    host: {
+      describe: 'optional hostname of samba machine to perform mappings or operations on',
+      default: '*',
+      requiresArg: true
+    },
+    hidden: {
+      describe: 'whether or not samba share should be hidden (not browsable)',
+      default: null,
+      requiresArg: false
+    },
+    comment: {
+      describe: 'optional comment message to add to new created share',
+      default: '-',
+      requiresArg: true
+    },
+    'guest-permission': {
+      describe: 'whether guests should be allowed on newly created share (read|write|denied)',
+      default: '',
+      requiresArg: false
+    },
+    'rbd-id': {
+      describe: 'RBD client id used to communicate with ceph',
+      default: 'admin',
+      requiresArg: true
+    },
+    permission: {
+      describe: 'permission to apply on users (read|write|denied)',
+      default: '-',
+      requiresArg: true
+    },
+    password: {
+      describe: 'password of user',
+      default: '-',
+      requiresArg: true
+    },
+    username: {
+      describe: 'samba username to create or edit',
+      default: '-',
+      requiresArg: true
+    },
+    'new-name': {
+      describe: 'new name to apply to a samba share',
+      default: '-',
+      requiresArg: true
+    }
+  }, subcommand({
+    lshost: async (argv, proxy) => {
+      for (let host of (await proxy.samba.hosts())) {
+        console.log(`${host.hostname}@${host.version} [${host.types.join(', ')}]`)
+      }
+    },
+
+    add: async (argv, proxy) => {
+      if (!argv.share || !argv.image || argv.image === '-') {
+        return false;
+      }
+
+      patience();
+
+      if ((await proxy.samba.exists(argv.share))) {
+        throw new Error(`[ERR] share already exists: ${argv.share}`);
+      }
+
+      const imageName = ImageNameParser.parse(argv.image, '*');
+      const newShare = {
+        image: imageName.image,
+        pool: imageName.pool,
+        id: argv['rbd-id'],
+        guest: SambaAuthUtils.parsePermission(argv['guest-permission'] || 'denied'),
+        name: argv.share,
+        comment: argv.comment || '',
+        browsable: !(argv.hidden === null ? false : argv.hidden),
+        capacity: null,
+        used: null,
+        host: null,
+        acl: {}
+      };
+
+      const result = await proxy.samba.add(newShare, argv.host);
+
+      TablePrinter.print([result], [{key: 'Host', value: x => x.host},
+        {key: 'Name', value: x => x.name},
+        {key: 'Hidden', value: x => (!x.browsable) ? 'Yes' : 'No'},
+        {key: 'Image', value: x => ImageNameParser.parse(x.image, x.pool).fullName},
+        {key: 'Size', value: x => SizeParser.stringify(x.capacity)},
+        {key: 'Used', value: x => SizeParser.stringify(x.used)}]);
+    },
+
+    del: async (argv, proxy) => {
+      if (!argv.share) {
+        return false;
+      }
+
+      patience();
+
+      if ((await proxy.samba.del(argv.share))) {
+        console.log('deleted');
+      }
+      else {
+        throw new Error(`samba share not found: ${argv.share}`);
+      }
+    },
+
+    ls: async (argv, proxy) => {
+      TablePrinter.print(await proxy.samba.ls(argv.host), [{key: 'Host', value: x => x.host},
+        {key: 'Name', value: x => x.name},
+        {key: 'Hidden', value: x => (!x.browsable) ? 'Yes' : 'No'},
+        {key: 'Image', value: x => ImageNameParser.parse(x.image, x.pool).fullName},
+        {key: 'Size', value: x => SizeParser.stringify(x.capacity)},
+        {key: 'Used', value: x => SizeParser.stringify(x.used)}]);
+    },
+
+    'add-user': async (argv, proxy) => {
+      if (!argv.share || !argv.permission || argv.permission === '-' || !argv.username || argv.username === '-') {
+        return false;
+      }
+
+      if (argv.password === '-') {
+        argv.password = '';
+      }
+
+      patience();
+
+      const acl = {
+        password: argv.password,
+        permission: SambaAuthUtils.parsePermission(argv.permission)
+      };
+
+      if ((await proxy.samba.addUser(argv.share, argv.username, acl))) {
+        console.log('updated');
+      }
+      else {
+        throw new Error(`could not add user ${argv.username} to samba share ${argv.share}`);
+      }
+    },
+
+    'edit-user': async (argv, proxy) => {
+      if (!argv.share || !argv.username || argv.username === '-') {
+        return false;
+      }
+
+      patience();
+
+      const user = await proxy.samba.getUser(argv.share, argv.username);
+
+      if (argv.password && argv.password !== '-') {
+        user.password = argv.password;
+      }
+
+      if (argv.permission && argv.permission !== '-') {
+        user.permission = SambaAuthUtils.parsePermission(argv.permission);
+      }
+
+      if (await proxy.samba.editUser(argv.share, argv.username, user)) {
+        console.log('updated');
+      }
+      else {
+        throw new Error(`could not update user "${argv.username}" for samba share "${argv.share}"`);
+      }
+    },
+
+    'del-user': async (argv, proxy) => {
+      if (!argv.share || !argv.username || argv.username === '-') {
+        return false;
+      }
+
+      patience();
+
+      if ((await proxy.samba.delUser(argv.share, argv.username))) {
+        console.log('updated');
+      }
+      else {
+        throw new Error(`could not delete user ${argv.username} from samba share ${argv.share}`);
+      }
+    },
+
+    edit: async (argv, proxy) => {
+      if (!argv.share) {
+        return false;
+      }
+
+      patience();
+
+      const share = await proxy.samba.getShare(argv.share);
+
+      if (argv.image && argv.image !== '-') {
+        const imageName = ImageNameParser.parse(argv.image, '*');
+        share.image = imageName.image;
+        share.pool = imageName.pool;
+      }
+
+      try {
+        share.guest = SambaAuthUtils.parsePermission(argv['guest-permission']);
+      }
+      catch (err) {
+      }
+
+      if (argv.comment && argv.comment !== '-') {
+        share.comment = argv.comment;
+      }
+
+      if (argv.hidden !== null) {
+        share.hidden = !argv.hidden;
+      }
+
+      if (await proxy.samba.update(share)) {
+        console.log('updated');
+      }
+      else {
+        throw new Error(`could not update share: ${share.name}`);
+      }
+    },
+
+    rename: async (argv, proxy) => {
+      if (!argv.share || !argv['new-name'] || argv['new-name'] === '-') {
+        return false;
+      }
+
+      patience();
+
+      if (await proxy.samba.rename(argv.share, argv['new-name'])) {
+        console.log('updated');
+      }
+      else {
+        throw new Error(`could not rename samba share: ${argv.share} to ${argv['new-name']}`);
+      }
+    },
+
+    details: async (argv, proxy) => {
+      if (!argv.share) {
+        return false;
+      }
+
+      patience();
+
+      const share = await proxy.samba.getShare(argv.share);
+
+      console.log(`Share: ${share.name}`);
+      console.log(`Location: ${share.host}`);
+      console.log(`Image: ${ImageNameParser.parse(share.image, share.pool).fullName}`);
+      console.log(`Hidden: ${share.browsable ? 'No' : 'Yes'}`);
+      console.log(`Capacity: ${SizeParser.stringify(share.capacity)}`);
+      console.log(`Used: ${SizeParser.stringify(share.used)}`);
+      console.log(`Comment: ${share.comment}`);
+      console.log();
+      console.log(`Guest Permission: ${SambaAuthUtils.stringifyPermission(share.guest)}`);
+      console.log();
+
+      TablePrinter.print(Object.entries(share.acl), [{key: 'Username', value: ([user]) => user},
+        {key: 'Password', value: ([,acl]) => acl.password},
+        {key: 'Permission', value: ([,acl]) => SambaAuthUtils.stringifyPermission(acl.permission)}]);
+      console.log();
     }
   }))
   .command('lshost', 'view all RPC host agents', { }, command(async (argv, proxy) => {

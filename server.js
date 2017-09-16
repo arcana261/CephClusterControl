@@ -8,13 +8,14 @@ const path = require('path');
 const MkDir = require('./lib/utils/MkDir');
 const LevelDb = require('./lib/utils/LevelDb');
 const ErrorFormatter = require('./lib/utils/ErrorFormatter');
+const SambaClient = require('./lib/samba');
 
 function ensureDirectory(p) {
   return MkDir.path(path.dirname(p));
 }
 
 const yargs = require('yargs')
-  .usage('$0 [ceph|rbd]')
+  .usage('$0 [ceph|rbd|samba]')
   .option('rabbit', {
     describe: 'RabbitMQ Hostname',
     default: 'localhost'
@@ -102,6 +103,26 @@ async function main() {
   }
   else {
     log.warn('Plugin: "rbd" is disabled. provide "rbd" in startup script to enable it.');
+  }
+
+  if (yargs._.indexOf('samba') >= 0) {
+    inits.push(SambaClient.capable().then(async result => {
+      if (result) {
+        const client = new SambaClient(({db: db}));
+        server.addHandler('samba', client);
+
+        await server.addType('samba');
+      }
+      else {
+        log.warn('Plugin: "samba" requested but could not be enabled');
+      }
+    }).catch(err => {
+      log.warn('Plugin: "samba" requested but could not be enabled');
+      log.error(ErrorFormatter.format(err));
+    }));
+  }
+  else {
+    log.warn('Plugin: "samba" is disabled. provide "samba" in startup script to enable it.');
   }
 
   Promise.all(inits)

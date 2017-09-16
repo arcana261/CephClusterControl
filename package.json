@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "amqplib": "^0.5.1",
+    "copy": "^0.3.1",
     "exception-formatter": "^1.0.5",
     "getos": "^3.0.1",
     "level": "^1.7.0",
