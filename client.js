@@ -479,7 +479,7 @@ const yargs = require('yargs')
       });
     }
   }))
-  .command('samba <add|ls|del|lshost|add-user|del-user|edit|rename|edit-user|details> [share]', 'manage samba shares over RBD', {
+  .command('samba <add|ls|del|lshost|add-user|del-user|edit|rename|edit-user|details|extend> [share]', 'manage samba shares over RBD', {
     image: {
       describe: 'rbd image to use for mapping of samba share',
       default: '-',
@@ -528,6 +528,11 @@ const yargs = require('yargs')
     'new-name': {
       describe: 'new name to apply to a samba share',
       default: '-',
+      requiresArg: true
+    },
+    'size': {
+      describe: 'amount to extend a share (e.g. 50mb)',
+      default: '0',
       requiresArg: true
     }
   }, subcommand({
@@ -580,12 +585,8 @@ const yargs = require('yargs')
 
       patience();
 
-      if ((await proxy.samba.del(argv.share))) {
-        console.log('deleted');
-      }
-      else {
-        throw new Error(`samba share not found: ${argv.share}`);
-      }
+      await proxy.samba.del(argv.share);
+      console.log('deleted');
     },
 
     ls: async (argv, proxy) => {
@@ -613,12 +614,8 @@ const yargs = require('yargs')
         permission: SambaAuthUtils.parsePermission(argv.permission)
       };
 
-      if ((await proxy.samba.addUser(argv.share, argv.username, acl))) {
-        console.log('updated');
-      }
-      else {
-        throw new Error(`could not add user ${argv.username} to samba share ${argv.share}`);
-      }
+      await proxy.samba.addUser(argv.share, argv.username, acl);
+      console.log('updated');
     },
 
     'edit-user': async (argv, proxy) => {
@@ -638,12 +635,8 @@ const yargs = require('yargs')
         user.permission = SambaAuthUtils.parsePermission(argv.permission);
       }
 
-      if (await proxy.samba.editUser(argv.share, argv.username, user)) {
-        console.log('updated');
-      }
-      else {
-        throw new Error(`could not update user "${argv.username}" for samba share "${argv.share}"`);
-      }
+      await proxy.samba.editUser(argv.share, argv.username, user);
+      console.log('updated');
     },
 
     'del-user': async (argv, proxy) => {
@@ -653,12 +646,8 @@ const yargs = require('yargs')
 
       patience();
 
-      if ((await proxy.samba.delUser(argv.share, argv.username))) {
-        console.log('updated');
-      }
-      else {
-        throw new Error(`could not delete user ${argv.username} from samba share ${argv.share}`);
-      }
+      await proxy.samba.delUser(argv.share, argv.username);
+      console.log('updated');
     },
 
     edit: async (argv, proxy) => {
@@ -690,12 +679,8 @@ const yargs = require('yargs')
         share.hidden = !argv.hidden;
       }
 
-      if (await proxy.samba.update(share)) {
-        console.log('updated');
-      }
-      else {
-        throw new Error(`could not update share: ${share.name}`);
-      }
+      await proxy.samba.update(share);
+      console.log('updated');
     },
 
     rename: async (argv, proxy) => {
@@ -705,12 +690,8 @@ const yargs = require('yargs')
 
       patience();
 
-      if (await proxy.samba.rename(argv.share, argv['new-name'])) {
-        console.log('updated');
-      }
-      else {
-        throw new Error(`could not rename samba share: ${argv.share} to ${argv['new-name']}`);
-      }
+      await proxy.samba.rename(argv.share, argv['new-name']);
+      console.log('updated');
     },
 
     details: async (argv, proxy) => {
@@ -737,6 +718,17 @@ const yargs = require('yargs')
         {key: 'Password', value: ([,acl]) => acl.password},
         {key: 'Permission', value: ([,acl]) => SambaAuthUtils.stringifyPermission(acl.permission)}]);
       console.log();
+    },
+
+    extend: async (argv, proxy) => {
+      if (!argv.share || !argv.size || argv.size === '0') {
+        return false;
+      }
+
+      patience();
+
+      await proxy.samba.extend(argv.share, SizeParser.parseMegabyte(argv.size));
+      console.log('updated');
     }
   }))
   .command('lshost', 'view all RPC host agents', { }, command(async (argv, proxy) => {
