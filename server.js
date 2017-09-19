@@ -14,6 +14,7 @@ const MkDir = require('./lib/utils/MkDir');
 const LevelDb = require('./lib/utils/LevelDb');
 const ErrorFormatter = require('./lib/utils/ErrorFormatter');
 const SambaClient = require('./lib/samba');
+const IScsiClient = require('./lib/iscsi');
 
 function ensureDirectory(p) {
   return MkDir.path(path.dirname(p));
@@ -128,6 +129,26 @@ async function main() {
   }
   else {
     log.warn('Plugin: "samba" is disabled. provide "samba" in startup script to enable it.');
+  }
+
+  if (yargs._.indexOf('iscsi') >= 0) {
+    inits.push(IScsiClient.capable().then(async result => {
+      if (result) {
+        const client = new IScsiClient({db: db});
+        server.addHandler('iscsi', client);
+
+        await server.addType('iscsi');
+      }
+      else {
+        log.warn('Plugin: "iscsi" requested but could not be enabled');
+      }
+    }).catch(err => {
+      log.warn('Plugin: "iscsi" requested but could not be enabled');
+      log.error(ErrorFormatter.format(err));
+    }));
+  }
+  else {
+    log.warn('Plugin: "iscsi" is disabled. provide "iscsi" in startup script to enable it.');
   }
 
   Promise.all(inits)

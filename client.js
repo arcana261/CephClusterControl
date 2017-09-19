@@ -77,6 +77,21 @@ function patience() {
 }
 
 /**
+ * @param {Array.<IScsiTarget>} shares
+ */
+function printIScsiTable(shares) {
+  TablePrinter.print(shares, [{key: 'Host', value: x => x.host !== null ? x.host : ''},
+    {key: 'IQN', value: x => x.stringifiedIqn},
+    {key: 'Client', value: x => x.authentication !== null ? x.authentication.userId : ''},
+    {key: 'Password', value: x => x.authentication !== null ? x.authentication.password : ''},
+    {key: 'LUNs', value: x => x.luns !== null ? (x.luns.sizes.map(y => SizeParser.stringify(y)).join(', ')) : ''},
+    {key: 'Image', value: x => x.luns !== null ? ImageNameParser.parse(x.luns.image, x.luns.pool).fullName : ''},
+    {key: 'Capacity', value: x => x.luns !== null ? SizeParser.stringify(x.luns.capacity) : '0'},
+    {key: 'Used', value: x => x.luns !== null ? SizeParser.stringify(x.luns.used) : '0'},
+    {key: 'Allocated', value: x => x.luns !== null ? SizeParser.stringify(x.luns.sizes.reduce((p, c) => p + c, 0)) : 0}]);
+}
+
+/**
  * @param {*} argv
  * @returns {CephCaps|null}
  */
@@ -477,6 +492,25 @@ const yargs = require('yargs')
         pool: argv.pool,
         id: argv.id
       });
+    }
+  }))
+  .command('iscsi <add|ls|lshost|del|enable-auth|disable-auth|rename|add-lun|extend> [name]', 'manage iSCSI shares over RBD', {
+    host: {
+      describe: 'host to work with iscsi shares',
+      default: '*',
+      requiresArg: true
+    }
+  }, subcommand({
+    lshost: async (argv, proxy) => {
+      for (let host of (await proxy.samba.hosts())) {
+        console.log(`${host.hostname}@${host.version} [${host.types.join(', ')}]`)
+      }
+    },
+
+    ls: async (argv, proxy) => {
+      patience();
+
+      printIScsiTable(await proxy.iscsi.ls(argv.host));
     }
   }))
   .command('samba <add|ls|del|lshost|add-user|del-user|edit|rename|edit-user|details|extend> [share]', 'manage samba shares over RBD', {
