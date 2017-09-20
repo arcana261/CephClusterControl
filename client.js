@@ -94,6 +94,40 @@ function printIScsiTable(shares) {
 }
 
 /**
+ * @param {WorkerInfoResponse} hosts
+ */
+function printHosts(hosts) {
+  TablePrinter.print(hosts, [{key: 'Host', value: x => x.hostname},
+    {key: 'Version', value: x => x.version},
+    {key: 'Types', value: x => x.types.reduce((prev, cur) => {
+      if (prev.length < 1 || prev[prev.length - 1].length >= 5) {
+        prev.push([cur]);
+      }
+      else {
+        prev[prev.length - 1].push(cur);
+      }
+
+      return prev;
+    }, []).map(x => x.join(', '))},
+    {key: 'IP', value: x => x.ip}]);
+
+  console.log();
+}
+
+/**
+ * @param {IScsiWorkerInfoResponse} hosts
+ */
+function printIScsiHosts(hosts) {
+  TablePrinter.print(hosts, [{key: 'Host', value: x => x.hostname},
+    {key: 'Version', value: x => x.version},
+    {key: 'Discovery UserId', value: x => x.discovery !== null ? x.discovery.userId : ''},
+    {key: 'Discovery Password', value: x => x.discovery !== null ? x.discovery.password : ''},
+    {key: 'IP', value: x => x.ip}]);
+
+  console.log();
+}
+
+/**
  * @param {*} argv
  * @returns {CephCaps|null}
  */
@@ -128,10 +162,7 @@ const yargs = require('yargs')
     },
 
     lshost: async (argv, proxy) => {
-      for (let host of (await proxy.ceph.hosts())) {
-        console.log(`${host.hostname}@${host.version} [${host.types.join(', ')}]`)
-      }
-      console.log();
+      printHosts(await proxy.ceph.hosts());
     },
 
     'ls-auth': async (argv, proxy) => {
@@ -320,10 +351,7 @@ const yargs = require('yargs')
     },
 
     lshost: async (argv, proxy) => {
-      for (let host of (await proxy.rbd.hosts())) {
-        console.log(`${host.hostname}@${host.version} [${host.types.join(', ')}]`)
-      }
-      console.log();
+      printHosts(await proxy.rbd.hosts());
     },
 
     du: async (argv, proxy) => {
@@ -508,7 +536,7 @@ const yargs = require('yargs')
       });
     }
   }))
-  .command('iscsi <add|ls|lshost|del|enable-auth|disable-auth|rename|add-lun|extend> [name]', 'manage iSCSI shares over RBD', {
+  .command('iscsi <add|ls|lshost|del|enable-auth|disable-auth|rename|add-lun|extend|enable-discovery-auth|disable-discovery-auth> [name]', 'manage iSCSI shares over RBD', {
     host: {
       describe: 'host to work with iscsi shares',
       default: '*',
@@ -552,10 +580,7 @@ const yargs = require('yargs')
     }
   }, subcommand({
     lshost: async (argv, proxy) => {
-      for (let host of (await proxy.samba.hosts())) {
-        console.log(`${host.hostname}@${host.version} [${host.types.join(', ')}]`)
-      }
-      console.log();
+      printIScsiHosts(await proxy.iscsi.hosts());
     },
 
     ls: async (argv, proxy) => {
@@ -640,6 +665,32 @@ const yargs = require('yargs')
       patience();
 
       printIScsiTable([await proxy.iscsi.extend(argv.name, SizeParser.parseMegabyte(argv.size))]);
+    },
+
+    'enable-discovery-auth': async (argv, proxy) => {
+      if (!argv.host || argv.host === '*' || argv.host === '-' || !argv.password || argv.password === '-') {
+        return false;
+      }
+
+      patience();
+      await proxy.iscsi.enableDiscoveryAuthentication({
+        host: argv.host,
+        domain: argv.domain,
+        password: argv.password
+      });
+
+      console.log('enabled');
+    },
+
+    'disable-discovery-auth': async (argv, proxy) => {
+      if (!argv.host || argv.host === '*' || argv.host === '-') {
+        return false;
+      }
+
+      patience();
+      await proxy.iscsi.disableDiscoveryAuthentication(argv.host);
+
+      console.log('disabled');
     }
   }))
   .command('samba <add|ls|del|lshost|add-user|del-user|edit|rename|edit-user|details|extend> [share]', 'manage samba shares over RBD', {
@@ -700,10 +751,7 @@ const yargs = require('yargs')
     }
   }, subcommand({
     lshost: async (argv, proxy) => {
-      for (let host of (await proxy.samba.hosts())) {
-        console.log(`${host.hostname}@${host.version} [${host.types.join(', ')}]`)
-      }
-      console.log();
+      printHosts(await proxy.samba.hosts());
     },
 
     add: async (argv, proxy) => {
@@ -898,10 +946,7 @@ const yargs = require('yargs')
     }
   }))
   .command('lshost', 'view all RPC host agents', { }, command(async (argv, proxy) => {
-    for (let host of (await proxy.hosts())) {
-      console.log(`${host.hostname}@${host.version} [${host.types.join(', ')}]`)
-    }
-    console.log();
+    printHosts(await proxy.hosts());
   }))
   .option('rabbit', {
     describe: 'RabbitMQ Hostname',
