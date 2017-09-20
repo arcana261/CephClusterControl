@@ -84,11 +84,13 @@ function printIScsiTable(shares) {
     {key: 'IQN', value: x => x.stringifiedIqn},
     {key: 'Client', value: x => x.authentication !== null ? x.authentication.userId : ''},
     {key: 'Password', value: x => x.authentication !== null ? x.authentication.password : ''},
-    {key: 'LUNs', value: x => x.luns !== null ? (x.luns.sizes.map(y => SizeParser.stringify(y)).join(', ')) : ''},
+    {key: 'LUNs', value: x => x.luns !== null ? x.luns.sizes.map(y => SizeParser.stringify(y)) : ''},
     {key: 'Image', value: x => x.luns !== null ? ImageNameParser.parse(x.luns.image, x.luns.pool).fullName : ''},
     {key: 'Capacity', value: x => x.luns !== null ? SizeParser.stringify(x.luns.capacity) : '0'},
     {key: 'Used', value: x => x.luns !== null ? SizeParser.stringify(x.luns.used) : '0'},
     {key: 'Allocated', value: x => x.luns !== null ? SizeParser.stringify(x.luns.sizes.reduce((p, c) => p + c, 0)) : 0}]);
+
+  console.log();
 }
 
 /**
@@ -129,6 +131,7 @@ const yargs = require('yargs')
       for (let host of (await proxy.ceph.hosts())) {
         console.log(`${host.hostname}@${host.version} [${host.types.join(', ')}]`)
       }
+      console.log();
     },
 
     'ls-auth': async (argv, proxy) => {
@@ -144,6 +147,8 @@ const yargs = require('yargs')
             console.log(`\t[${entity}]: ${CephAuthUtils.stringifyEntityCaps(entityCaps)}`);
           }
         }
+
+        console.log();
       }
     },
 
@@ -253,6 +258,7 @@ const yargs = require('yargs')
         [{key: 'Pool', value: ([name, data]) => name},
         {key: 'Used', value: ([name, data]) => SizeParser.stringify(data.used)},
         {key: 'Objects', value: ([name, data]) => data.objects}]);
+      console.log();
     }
   }))
   .command('rbd <ls|lshost|du|info|create|showmapped|mount|umount|automount|rm|extend> [image] [location]', 'view information about rbd images', {
@@ -310,12 +316,14 @@ const yargs = require('yargs')
   }, subcommand({
     ls: async (argv, proxy) => {
       (await proxy.rbd.ls({pool: argv.pool, id: argv.id})).forEach(x => console.log(x));
+      console.log();
     },
 
     lshost: async (argv, proxy) => {
       for (let host of (await proxy.rbd.hosts())) {
         console.log(`${host.hostname}@${host.version} [${host.types.join(', ')}]`)
       }
+      console.log();
     },
 
     du: async (argv, proxy) => {
@@ -343,6 +351,7 @@ const yargs = require('yargs')
           {key: 'Provisioned', value: x => SizeParser.stringify(x.provisioned)},
           {key: 'Used', value: x => SizeParser.stringify(x.used)},
           {key: 'Query Age', value: x => `${AgeReporter.format(x.timestamp, (new UTCClock()).now.ms())}`}]);
+        console.log();
       }
     },
 
@@ -362,6 +371,7 @@ const yargs = require('yargs')
       console.log(`\tflags: ${result.flags.join(', ')}`);
       console.log(`\tused: ${result.diskUsed ? SizeParser.stringify(result.diskUsed) : ''}`);
       console.log(`\tfileSystem: ${result.fileSystem || ''}`);
+      console.log();
     },
 
     create: async (argv, proxy) => {
@@ -400,6 +410,7 @@ const yargs = require('yargs')
         {key: 'MountPoint', value: x => x.mountPoint || ''},
         {key: 'ReadOnly', value: x => x.readOnly ? 'RO' : 'RW'},
         {key: 'FileSystem', value: x => x.fileSystem || ''}]);
+      console.log();
     },
 
     mount: async (argv, proxy) => {
@@ -429,6 +440,7 @@ const yargs = require('yargs')
         {key: 'MountPoint', value: x => x.location},
         {key: 'ReadOnly', value: x => x.readOnly ? 'RO' : 'RW'},
         {key: 'FileSystem', value: x => x.fileSystem || ''}]);
+      console.log();
     },
 
     umount: async (argv, proxy) => {
@@ -452,6 +464,7 @@ const yargs = require('yargs')
       else {
         TablePrinter.print(result, [{key: 'Host', value: x => x.host},
           {key: 'Mount Point', value: x => x.mountPoint || ''}]);
+        console.log();
       }
     },
 
@@ -471,6 +484,7 @@ const yargs = require('yargs')
         {key: 'MountPoint', value: x => x.location},
         {key: 'ReadOnly', value: x => x.readOnly ? 'RO' : 'RW'},
         {key: 'FileSystem', value: x => x.fileSystem}]);
+      console.log();
     },
 
     rm: async (argv, proxy) => {
@@ -499,18 +513,133 @@ const yargs = require('yargs')
       describe: 'host to work with iscsi shares',
       default: '*',
       requiresArg: true
+    },
+
+    'destroy-data': {
+      describe: 'whether to delete all data when deleting iscsi share',
+      default: false,
+      requiresArg: true
+    },
+
+    'password': {
+      describe: 'password to set on iscsi shares',
+      default: '-',
+      requiresArg: true
+    },
+
+    'new-name': {
+      describe: 'new name to apply to iscsi share',
+      default: '-',
+      requiresArg: true
+    },
+
+    size: {
+      describe: 'size of new lun to add',
+      default: 0,
+      requiresArg: true
+    },
+
+    domain: {
+      describe: 'domain part for iscsi creation',
+      default: 'kstorage.org',
+      requiresArg: true
+    },
+
+    image: {
+      describe: 'rbd image to use for iscsi creation',
+      default: '-',
+      requiresArg: true
     }
   }, subcommand({
     lshost: async (argv, proxy) => {
       for (let host of (await proxy.samba.hosts())) {
         console.log(`${host.hostname}@${host.version} [${host.types.join(', ')}]`)
       }
+      console.log();
     },
 
     ls: async (argv, proxy) => {
       patience();
-
       printIScsiTable(await proxy.iscsi.ls(argv.host));
+      console.log();
+    },
+
+    add: async (argv, proxy) => {
+      if (!argv.name || !argv.domain || !argv.size || !argv.image || argv.image === '-') {
+        return false;
+      }
+
+      patience();
+      const image = ImageNameParser.parse(argv.image, '*');
+
+      const share = await proxy.iscsi.add({
+        name: argv.name,
+        host: argv.host,
+        domain: argv.domain,
+        image: image.image,
+        pool: image.pool,
+        size: SizeParser.parseMegabyte(argv.size)
+      });
+
+      printIScsiTable([share]);
+    },
+
+    del: async (argv, proxy) => {
+      if (!argv.name) {
+        return false;
+      }
+
+      patience();
+      await proxy.iscsi.del(argv.name, argv['destroy-data']);
+
+      console.log('deleted');
+    },
+
+    'enable-auth': async (argv, proxy) => {
+      if (!argv.name || !argv.password || argv.password === '-') {
+        return false;
+      }
+
+      patience();
+      printIScsiTable([await proxy.iscsi.enableAuthentication(argv.name, argv.password)]);
+    },
+
+    'disable-auth': async (argv, proxy) => {
+      if (!argv.name) {
+        return false;
+      }
+
+      patience();
+      printIScsiTable([await proxy.iscsi.disableAuthentication(argv.name)]);
+    },
+
+    rename: async (argv, proxy) => {
+      if (!argv.name || !argv['new-name'] || argv['new-name'] === '-') {
+        return false;
+      }
+
+      patience();
+      printIScsiTable([await proxy.iscsi.rename(argv.name, argv['new-name'])]);
+    },
+
+    'add-lun': async (argv, proxy) => {
+      if (!argv.name || !argv.size) {
+        return false;
+      }
+
+      patience();
+
+      printIScsiTable([await proxy.iscsi.addLun(argv.name, SizeParser.parseMegabyte(argv.size))]);
+    },
+
+    extend: async (argv, proxy) => {
+      if (!argv.name || !argv.size) {
+        return false;
+      }
+
+      patience();
+
+      printIScsiTable([await proxy.iscsi.extend(argv.name, SizeParser.parseMegabyte(argv.size))]);
     }
   }))
   .command('samba <add|ls|del|lshost|add-user|del-user|edit|rename|edit-user|details|extend> [share]', 'manage samba shares over RBD', {
@@ -574,6 +703,7 @@ const yargs = require('yargs')
       for (let host of (await proxy.samba.hosts())) {
         console.log(`${host.hostname}@${host.version} [${host.types.join(', ')}]`)
       }
+      console.log();
     },
 
     add: async (argv, proxy) => {
@@ -610,6 +740,7 @@ const yargs = require('yargs')
         {key: 'Image', value: x => ImageNameParser.parse(x.image, x.pool).fullName},
         {key: 'Size', value: x => SizeParser.stringify(x.capacity)},
         {key: 'Used', value: x => SizeParser.stringify(x.used)}]);
+      console.log();
     },
 
     del: async (argv, proxy) => {
@@ -630,6 +761,7 @@ const yargs = require('yargs')
         {key: 'Image', value: x => ImageNameParser.parse(x.image, x.pool).fullName},
         {key: 'Size', value: x => SizeParser.stringify(x.capacity)},
         {key: 'Used', value: x => SizeParser.stringify(x.used)}]);
+      console.log();
     },
 
     'add-user': async (argv, proxy) => {
@@ -769,6 +901,7 @@ const yargs = require('yargs')
     for (let host of (await proxy.hosts())) {
       console.log(`${host.hostname}@${host.version} [${host.types.join(', ')}]`)
     }
+    console.log();
   }))
   .option('rabbit', {
     describe: 'RabbitMQ Hostname',
