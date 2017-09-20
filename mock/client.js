@@ -1,15 +1,9 @@
 "use strict";
 
-const ClientLoop = require('../lib/rpc/ClientLoop');
-const os = require('os');
+const Ethernets = require('../lib/utils/Ethernets');
 
 async function main() {
-  let client = new ClientLoop('amqp://localhost?heartbeat=10', 'sample');//, {timeout: 600000});
-
-  await client.start();
-
-  var res = await client.call('info', os.hostname(), 'mehdi.hello', []);
-  console.log(res);
+  console.log(JSON.stringify(await Ethernets.ls(), null, 2));
 }
 
 main().catch(err => {
