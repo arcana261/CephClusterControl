@@ -536,6 +536,39 @@ const yargs = require('yargs')
       });
     }
   }))
+  .command('ntp <tick|server|make-step> [host]', 'view information and manage ntp on agent nodes', {
+
+  }, subcommand({
+    tick: async (argv, proxy) => {
+      patience();
+
+      TablePrinter.print(await proxy.ntp.tick(), [{key: 'Host', value: x => x.hostname},
+        {key: 'Offset', value: x => `${x.offset} ms`}]);
+      console.log();
+    },
+
+    server: async (argv, proxy) => {
+      patience();
+
+      TablePrinter.print(await proxy.ntp.server(), [{key: 'Host', value: x => x.hostname},
+        {key: 'Server', value: x => x.servers.map(y => y.server)},
+        {key: 'Type', value: x => x.servers.map(y => y.type)},
+        {key: 'Status', value: x => x.servers.map(y => y.status)},
+        {key: 'Stratum', value: x => x.servers.map(y => y.stratum)}]);
+      console.log();
+    },
+
+    'make-step': async (argv, proxy) => {
+      if (!argv.host) {
+        return false;
+      }
+
+      patience();
+
+      await proxy.ntp.makeStep(argv.host);
+      console.log('done');
+    }
+  }))
   .command('iscsi <add|ls|lshost|del|enable-auth|disable-auth|rename|add-lun|extend|enable-discovery-auth|disable-discovery-auth> [name]', 'manage iSCSI shares over RBD', {
     host: {
       describe: 'host to work with iscsi shares',

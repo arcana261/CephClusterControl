@@ -15,6 +15,7 @@ const LevelDb = require('./lib/utils/LevelDb');
 const ErrorFormatter = require('./lib/utils/ErrorFormatter');
 const SambaClient = require('./lib/samba');
 const IScsiClient = require('./lib/iscsi');
+const NtpClient = require('./lib/ntp');
 
 function ensureDirectory(p) {
   return MkDir.path(path.dirname(p));
@@ -149,6 +150,26 @@ async function main() {
   }
   else {
     log.warn('Plugin: "iscsi" is disabled. provide "iscsi" in startup script to enable it.');
+  }
+
+  if (yargs._.indexOf('ntp') >= 0) {
+    inits.push(NtpClient.capable().then(async result => {
+      if (result) {
+        const client = new NtpClient({db: db});
+        server.addHandler('ntp', client);
+
+        await server.addType('ntp');
+      }
+      else {
+        log.warn('Plugin: "ntp" requested but could not be enabled');
+      }
+    }).catch(err => {
+      log.warn('Plugin: "ntp" requested but could not be enabled');
+      log.error(ErrorFormatter.format(err));
+    }));
+  }
+  else {
+    log.warn('Plugin: "ntp" is disabled. provide "ntp" in startup script to enable it');
   }
 
   Promise.all(inits)
