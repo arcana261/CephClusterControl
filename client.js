@@ -517,7 +517,7 @@ const yargs = require('yargs')
 
     'destroy-data': {
       describe: 'whether to delete all data when deleting iscsi share',
-      default: false,
+      default: '-',
       requiresArg: true
     },
 
@@ -590,7 +590,7 @@ const yargs = require('yargs')
       }
 
       patience();
-      await proxy.iscsi.del(argv.name, argv['destroy-data']);
+      await proxy.iscsi.del(argv.name, argv['destroy-data'] !== '-');
 
       console.log('deleted');
     },
