@@ -120,8 +120,8 @@ function printHosts(hosts) {
 function printIScsiHosts(hosts) {
   TablePrinter.print(hosts, [{key: 'Host', value: x => x.hostname},
     {key: 'Version', value: x => x.version},
-    {key: 'Discovery UserId', value: x => x.discovery !== null ? x.discovery.userId : ''},
-    {key: 'Discovery Password', value: x => x.discovery !== null ? x.discovery.password : ''},
+    {key: 'DiscoveryUserId', value: x => x.discovery !== null ? x.discovery.userId : ''},
+    {key: 'DiscoveryPassword', value: x => x.discovery !== null ? x.discovery.password : ''},
     {key: 'IP', value: x => x.ip}]);
 
   console.log();
@@ -626,7 +626,7 @@ const yargs = require('yargs')
       }
 
       patience();
-      printIScsiTable([await proxy.iscsi.enableAuthentication(argv.name, argv.password)]);
+      printIScsiTable([await proxy.iscsi.enableAuthentication(argv.name, '' + argv.password)]);
     },
 
     'disable-auth': async (argv, proxy) => {
@@ -676,7 +676,7 @@ const yargs = require('yargs')
       await proxy.iscsi.enableDiscoveryAuthentication({
         host: argv.host,
         domain: argv.domain,
-        password: argv.password
+        password: '' + argv.password
       });
 
       console.log('enabled');
