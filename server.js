@@ -16,6 +16,7 @@ const ErrorFormatter = require('./lib/utils/ErrorFormatter');
 const SambaClient = require('./lib/samba');
 const IScsiClient = require('./lib/iscsi');
 const NtpClient = require('./lib/ntp');
+const RadosGatewayClient = require('./lib/rgw');
 
 function ensureDirectory(p) {
   return MkDir.path(path.dirname(p));
@@ -170,6 +171,26 @@ async function main() {
   }
   else {
     log.warn('Plugin: "ntp" is disabled. provide "ntp" in startup script to enable it');
+  }
+
+  if (yargs._.indexOf('rgw') >= 0) {
+    inits.push(RadosGatewayClient.capable().then(async result => {
+      if (result) {
+        const client = new RadosGatewayClient({db: db});
+        server.addHandler('rgw', client);
+
+        await server.addType('rgw');
+      }
+      else {
+        log.warn('Plugin: "rgw" requested but could not be enabled');
+      }
+    }).catch(err => {
+      log.warn('Plugin: "rgw" is disabled. provide "rgw" in startup script to enable it');
+      log.error(ErrorFormatter.format(err));
+    }));
+  }
+  else {
+    log.warn('Plugin "rgw" is disabled. provide "rgw" in startup script to enable it');
   }
 
   Promise.all(inits)
