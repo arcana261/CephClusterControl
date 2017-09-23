@@ -1,4 +1,5 @@
 /.idea
 /data
 /node_modules
-
+/pkg/deb/BUILD
+/pkg/deb/*.deb

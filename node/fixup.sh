@@ -11,4 +11,3 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 /bin/chmod +x "${DIR}/bin/npm"
 /bin/chmod +x "${DIR}/bin/npx"
 
-echo "Hello, ${DIR}!"

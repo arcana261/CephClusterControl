@@ -1,0 +1,19 @@
+[Unit]
+Description=Cluster Management Agent
+After=network-online.target local-fs.target time-sync.target
+Wants=network-online.target local-fs.target time-sync.target
+Before=target.service smbd.service smb.service
+
+[Service]
+Environment=PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/usr/local/bin/kluster-agent
+ExecReload=/bin/kill -HUP $MAINPID
+TasksMax=infinity
+Restart=on-failure
+StartLimitInterval=30min
+StartLimitBurst=30
+RestartSec=20s
+
+[Install]
+WantedBy=multi-user.target
+
