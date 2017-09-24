@@ -7,7 +7,9 @@ module.exports = {
     rabbitmq: 'localhost',
     heartbeat: 10,
     topic: 'kaveh_cluster_ctrl',
-    timeout: 2000
+    timeout: 2000,
+    username: 'guest',
+    password: 'guest'
   },
 
   ceph: {

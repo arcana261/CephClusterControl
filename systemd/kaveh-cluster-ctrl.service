@@ -5,7 +5,7 @@ Wants=network-online.target local-fs.target time-sync.target
 Before=target.service smbd.service smb.service
 
 [Service]
-Environment=PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/usr/local/bin/kluster-agent
 ExecReload=/bin/kill -HUP $MAINPID
 TasksMax=infinity

@@ -39,6 +39,14 @@ async function main() {
       describe: 'RabbitMQ Hostname',
       default: settings.rpc.rabbitmq
     })
+    .option('rabbit-username', {
+      describe: 'RabbitMQ UserName',
+      default: settings.rpc.username
+    })
+    .option('rabbit-password', {
+      describe: 'RabbitMQ Password',
+      default: settings.rpc.password
+    })
     .option('topic', {
       describe: 'RabbitMQ Topic used for IPC communication',
       default: settings.rpc.topic
@@ -58,7 +66,8 @@ async function main() {
     .help()
     .argv;
 
-  const connectionString = `amqp://${yargs.rabbit}?heartbeat=${yargs.heartbeat}`;
+  const connectionString =
+    `amqp://${yargs['rabbit-username']}:${yargs['rabbit-password']}@${yargs.rabbit}?heartbeat=${yargs.heartbeat}`;
 
   log.info(`ConnectionString = ${connectionString}`);
   log.info(`Topic = ${yargs.topic}`);

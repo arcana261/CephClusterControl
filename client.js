@@ -15,12 +15,16 @@ const SambaAuthUtils = require('./lib/utils/SambaAuthUtils');
 const ErrorFormatter = require('./lib/utils/ErrorFormatter');
 const EtcParser = require('./lib/utils/EtcParser');
 
+let yargs = null;
+
 /**
  * @param {{rabbit: String, heartbeat: Number, timeout: Number}} argv
  * @returns {ClientLoop}
  */
 function makeClient(argv) {
-  return new ClientLoop(`amqp://${argv.rabbit}?heartbeat=${argv.heartbeat}`, argv.topic, {timeout: argv.timeout});
+  return new ClientLoop(
+    `amqp://${argv['rabbit-username']}:${argv['rabbit-password']}@${argv.rabbit}?heartbeat=${argv.heartbeat}`,
+    argv.topic, {timeout: argv.timeout});
 }
 
 /**
@@ -76,7 +80,7 @@ function subcommand(opts) {
 }
 
 function patience() {
-  console.log('This may take minutes to complete');
+  console.log('This may take minutes to complete')
   console.log('Please be patient...');
   console.log();
 }
@@ -172,7 +176,7 @@ function parseCapsArgv(argv) {
 async function main() {
   const settings = await EtcParser.read(config.etc, require('./config/defaultValues'));
 
-  const yargs = require('yargs')
+  yargs = require('yargs')
     .command('ceph <lspool|lshost|ls-auth|chk-auth|add-auth|get-auth|save-auth|del-auth|get-quota|set-quota|create-pool|del-pool|df> [client] [args..]', 'view information about ceph cluster', {
       'yes-i-really-really-mean-it': {
         describe: 'provide it for deleting pools',
@@ -395,6 +399,7 @@ async function main() {
       },
       refresh: {
         describe: 'force refresh values e.g. disk usage',
+        boolean: true,
         default: false,
         requiresArg: false
       },
@@ -426,11 +431,13 @@ async function main() {
       },
       permanent: {
         describe: 'mount target image in designated host permanently during reboots',
+        boolean: true,
         default: false,
         requiresArg: false
       },
       force: {
         describe: 'used to force unmounting rbd device',
+        boolean: true,
         default: false,
         requiresArg: false
       }
@@ -827,7 +834,8 @@ async function main() {
       },
       hidden: {
         describe: 'whether or not samba share should be hidden (not browsable)',
-        default: null,
+        boolean: true,
+        default: false,
         requiresArg: false
       },
       comment: {
@@ -1073,6 +1081,14 @@ async function main() {
       describe: 'RabbitMQ Hostname',
       default: settings.rpc.rabbitmq,
       requiresArg: true
+    })
+    .option('rabbit-username', {
+      describe: 'RabbitMQ UserName',
+      default: settings.rpc.username
+    })
+    .option('rabbit-password', {
+      describe: 'RabbitMQ Password',
+      default: settings.rpc.password
     })
     .option('topic', {
       describe: 'RabbitMQ Topic used for IPC communication',
