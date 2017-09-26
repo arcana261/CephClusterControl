@@ -23,6 +23,7 @@ const RadosGatewayClient = require('./lib/rgw');
 const Retry = require('./lib/utils/Retry');
 const Condition = require('./lib/utils/Condition');
 const EtcParser = require('./lib/utils/EtcParser');
+const MultipartServer = require('./lib/multipart');
 
 const onRbdAutoMount = new Condition();
 
@@ -61,7 +62,7 @@ async function main() {
     })
     .option('db', {
       describe: 'local LevelDB database to use',
-      default: settings.agent.db
+      default: process.env.NODE_ENV === 'development' ? path.join(__dirname, 'data', 'cluster.db') : settings.agent.db
     })
     .help()
     .argv;
@@ -257,6 +258,26 @@ async function main() {
   }
   else {
     log.warn('Plugin "rgw" is disabled. provide "rgw" in startup script to enable it');
+  }
+
+  if (plugins.indexOf('scp') >= 0) {
+    inits.push(MultipartServer.capable().then(async result => {
+      if (result) {
+        const client = new MultipartServer({db: db});
+        server.addHandler('multipart', client);
+
+        await server.addType('multipart');
+      }
+      else {
+        log.warn('Plugin: "scp" requested but could not be enabled');
+      }
+    }).catch(err => {
+      log.warn('Plugin: "scp" is disabled. provide "scp" in startup script to enable it');
+      log.error(ErrorFormatter.format(err));
+    }));
+  }
+  else {
+    log.warn('Plugin "scp" is disabled. provide "scp" in startup script to enable it');
   }
 
   Promise.all(inits)

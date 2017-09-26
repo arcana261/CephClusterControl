@@ -14,6 +14,9 @@ const ImageNameParser = require('./lib/utils/ImageNameParser');
 const SambaAuthUtils = require('./lib/utils/SambaAuthUtils');
 const ErrorFormatter = require('./lib/utils/ErrorFormatter');
 const EtcParser = require('./lib/utils/EtcParser');
+const fs = require('mz/fs');
+const PathPrinter = require('./lib/utils/PathPrinter');
+const EtaReporter = require('./lib/utils/EtaReporter');
 
 let yargs = null;
 
@@ -633,7 +636,12 @@ async function main() {
         });
       }
     }))
-    .command('ntp <tick|server|make-step> [host]', 'view information and manage ntp on agent nodes', {}, subcommand({
+    .command('ntp <lshost|tick|server|make-step> [host]', 'view information and manage ntp on agent nodes', {}, subcommand({
+
+      lshost: async (argv, proxy) => {
+        printHosts(await proxy.rbd.hosts());
+      },
+
       tick: async (argv, proxy) => {
         patience();
 
@@ -1076,6 +1084,69 @@ async function main() {
     }))
     .command('lshost', 'view all RPC host agents', {}, command(async (argv, proxy) => {
       printHosts(await proxy.hosts());
+    }))
+    .command('scp [arg1] [arg2]', 'allows scp-like file transfer between agents', {}, command(async (argv, proxy) => {
+      if (!argv.arg1 || !argv.arg2) {
+        yargs.showHelp('log');
+        process.exit(-1);
+      }
+      else {
+        if (argv.arg2.includes(':')) {
+          const [host, destination] = argv.arg2.split(':', 2);
+          let fileSize = 0;
+          let filePath = '';
+          let lastSpeed = 0;
+
+          const print = (speed, transferred) => {
+            let eta = '...';
+
+            if (fileSize > 0 && (speed > 0 || lastSpeed > 0)) {
+              eta = EtaReporter.format(((fileSize - transferred) / Math.max(speed, lastSpeed)) * 1000);
+            }
+
+            const immutablePart = `    ${SizeParser.stringify(transferred)}/${SizeParser.stringify(fileSize)}    ` +
+              `${SizeParser.stringify(speed)}/s    ` +
+              `ETA: ${eta}`;
+
+            let toWrite = `[${PathPrinter.summerize(filePath, process.stdout.columns - immutablePart.length - 4)}]`
+              + immutablePart;
+
+            while (toWrite.length < process.stdout.columns) {
+              toWrite = toWrite + ' ';
+            }
+
+            toWrite = toWrite + '\r';
+
+            process.stdout.write(toWrite);
+          };
+
+          await proxy.multipart.send(argv.arg1, host, destination, newFilePath => {
+            process.stdout.write('\n');
+            filePath = newFilePath;
+            fileSize = 0;
+
+            fs.lstat(newFilePath).then(stat => {
+              fileSize = stat.size / (1024 * 1024);
+              print(0, 0);
+            }).catch(err => {
+              console.log(ErrorFormatter.format(err));
+              process.exit(-1);
+            });
+          }, (speed, transferred) => {
+            lastSpeed = speed;
+
+            if (fileSize > 0) {
+              print(speed, transferred);
+            }
+          });
+
+          if (fileSize > 0) {
+            print(lastSpeed, fileSize);
+          }
+
+          console.log();
+        }
+      }
     }))
     .option('rabbit', {
       describe: 'RabbitMQ Hostname',
