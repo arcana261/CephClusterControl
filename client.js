@@ -1119,6 +1119,13 @@ async function main() {
           reporter.finish();
           console.log();
         }
+        else {
+          console.log('Usage:');
+          console.log('scp [host]:[source-path] [destination-path]');
+          console.log('-or-');
+          console.log('scp [source-path] [host:][destination-path]');
+          process.exit(-1);
+        }
       }
     }))
     .option('rabbit', {
