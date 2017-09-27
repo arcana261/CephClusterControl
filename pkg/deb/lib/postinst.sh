@@ -1,5 +1,7 @@
 #!/bin/bash
 
+VERSION="__VERSION__"
+
 /bin/rm -f /usr/local/bin/kluster-cli
 /bin/rm -f /usr/local/bin/kluster-agent
 /bin/ln -s /usr/local/lib/kaveh-cluster-ctrl/bin/kluster-cli /usr/local/bin/kluster-cli
@@ -33,3 +35,8 @@ if [ -f /tmp/.kaveh-cluster-ctrl-enable-service.cmd ]; then
     rm -f /tmp/.kaveh-cluster-ctrl-enable-service.cmd
     /bin/systemctl enable kaveh-cluster-ctrl.service
 fi
+
+rm -f /usr/local/lib/kaveh-cluster-ctrl/VERSION
+echo "${VERSION}" > /usr/local/lib/kaveh-cluster-ctrl/VERSION
+
+

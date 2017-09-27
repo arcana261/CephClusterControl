@@ -6,3 +6,4 @@
 /pkg/rpm/*.tar.gz
 /pkg/rpm/SOURCE
 /pkg/rpm/SPEC
+/pkg/rpm/TRIGGER
