@@ -44,6 +44,7 @@ echo "Version: ${VERSION}" >> "${DIR}/BUILD/DEBIAN/control"
 echo "Maintainer: ${MAINTAINER}" >> "${DIR}/BUILD/DEBIAN/control"
 echo "Architecture: amd64" >> "${DIR}/BUILD/DEBIAN/control"
 echo "Description: ${DESCRIPTION}" >> "${DIR}/BUILD/DEBIAN/control"
+echo "Depends: at" >> "${DIR}/BUILD/DEBIAN/control"
 
 dpkg-deb --build "${DIR}/BUILD"
 

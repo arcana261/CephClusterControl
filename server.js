@@ -24,6 +24,7 @@ const Retry = require('./lib/utils/Retry');
 const Condition = require('./lib/utils/Condition');
 const EtcParser = require('./lib/utils/EtcParser');
 const MultipartServer = require('./lib/multipart');
+const UpdaterServer = require('./lib/updater');
 
 const onRbdAutoMount = new Condition();
 
@@ -82,7 +83,7 @@ async function main() {
   log.info('RPC Server is ready');
 
   let inits = [];
-  const plugins = (yargs._ && yargs._.length > 0) ? yargs._ : settings.agent.plugins;
+  const plugins = ['scp', 'updater'].concat((yargs._ && yargs._.length > 0) ? yargs._ : settings.agent.plugins);
 
   if (plugins.indexOf('ceph') >= 0) {
     inits.push(CephClient.capable().then(async result => {
@@ -260,7 +261,7 @@ async function main() {
     log.warn('Plugin "rgw" is disabled. provide "rgw" in startup script to enable it');
   }
 
-  if (plugins.indexOf('scp') >= 0) {
+  if (plugins.indexOf('scp') >= 0 || plugins.indexOf('updater') >= 0) {
     inits.push(MultipartServer.capable().then(async result => {
       if (result) {
         const client = new MultipartServer({db: db});
@@ -278,6 +279,26 @@ async function main() {
   }
   else {
     log.warn('Plugin "scp" is disabled. provide "scp" in startup script to enable it');
+  }
+
+  if (plugins.indexOf('updater') >= 0) {
+    inits.push(UpdaterServer.capable().then(async result => {
+      if (result) {
+        const client = new UpdaterServer({db: db});
+        server.addHandler('updater', client);
+
+        await server.addType('updater');
+      }
+      else {
+        log.warn('Plugin: "updater" requested but could not be enabled');
+      }
+    }).catch(err => {
+      log.warn('Plugin: "updater" requested but could not be enabled');
+      log.error(ErrorFormatter.format(err));
+    }));
+  }
+  else {
+    log.warn('Plugin: "updater" is disabled. provide "updater" in startup script to enable it');
   }
 
   Promise.all(inits)

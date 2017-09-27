@@ -14,11 +14,11 @@ const ImageNameParser = require('./lib/utils/ImageNameParser');
 const SambaAuthUtils = require('./lib/utils/SambaAuthUtils');
 const ErrorFormatter = require('./lib/utils/ErrorFormatter');
 const EtcParser = require('./lib/utils/EtcParser');
-const fs = require('mz/fs');
-const PathPrinter = require('./lib/utils/PathPrinter');
-const EtaReporter = require('./lib/utils/EtaReporter');
 const DirectorySize = require('./lib/utils/DirectorySize');
 const TransferReporter = require('./lib/utils/TransferReporter');
+const Distro = require('./lib/utils/Distro');
+const readline = require('readline');
+const EtaReporter = require('./lib/utils/EtaReporter');
 
 let yargs = null;
 
@@ -138,6 +138,7 @@ function printHosts(hosts) {
 
       return prev;
     }, []).map(x => x.join(', '))},
+    {key: 'OS', value: x => Distro.formatDistro(x.distro)},
     {key: 'IP', value: x => x.ip}]);
 
   console.log();
@@ -151,6 +152,7 @@ function printIScsiHosts(hosts) {
     {key: 'Version', value: x => x.version},
     {key: 'DiscoveryUserId', value: x => x.discovery !== null ? x.discovery.userId : ''},
     {key: 'DiscoveryPassword', value: x => x.discovery !== null ? x.discovery.password : ''},
+    {key: 'OS', value: x => Distro.formatDistro(x.distro)},
     {key: 'IP', value: x => x.ip}]);
 
   console.log();
@@ -1086,6 +1088,74 @@ async function main() {
     }))
     .command('lshost', 'view all RPC host agents', {}, command(async (argv, proxy) => {
       printHosts(await proxy.hosts());
+    }))
+    .command('update <path> [...hosts]', 'allows remotely updating agent services', {
+      'allow-downgrade': {
+        describe: 'allows downgrading',
+        default: false,
+        boolean: true
+      }
+    }, command(async (argv, proxy) => {
+      if (!argv.path) {
+        yargs.showHelp('log');
+        process.exit(-1);
+      }
+
+      let dy = 0;
+      let dx = 0;
+
+      console.log();
+
+      const lastSpeed = {};
+
+      await proxy.updater.update(argv.path, (report) => {
+        report.hosts.forEach(x => {
+          if (x.speed > 0) {
+            lastSpeed[x.hostname] = x.speed;
+          }
+        });
+
+        const table = TablePrinter.format(report.hosts, [
+          {key: 'Hostname', value: x => x.hostname},
+          {key: 'Version', value: x => x.version},
+          {key: 'OS', value: x => Distro.formatDistro(x.distro)},
+          {key: 'Status', value: x => x.status},
+          {key: 'Transferred', value: x => SizeParser.stringify(x.transferred)},
+          {key: 'Percent', value: x => Math.round((x.transferred / report.size) * 100)},
+          {key: 'Speed', value: x => `${SizeParser.stringify(x.speed)}/s`},
+          {key: 'ETA', value: x => {
+            let speed = Math.max(x.speed, x.hostname in lastSpeed ? lastSpeed[x.hostname] : 0);
+
+            if (speed > 0) {
+              return EtaReporter.format((report.size - x.transferred) / speed * 1000);
+            }
+            else {
+              return '...';
+            }
+          }}
+        ]);
+
+        const lines = [
+          `Package: ${report.path}`,
+          `Size: ${SizeParser.stringify(report.size)}`,
+          `Version: ${report.version === null ? 'pending' : report.version}`,
+          `Target OS: ${report.target}`,
+          '', ... table.split('\n'), ''
+        ];
+
+        readline.moveCursor(process.stdout, -dx, 0);
+        for (let i = 0; i < dy; i++) {
+          readline.moveCursor(process.stdout, 0, -1);
+          readline.clearLine(process.stdout, 0);
+        }
+
+        lines.forEach(line => console.log(line));
+
+        dy = lines.length;
+        dx = lines[lines.length - 1].length;
+
+      }, argv['allow-downgrade'], argv.hosts);
+
     }))
     .command('scp [arg1] [arg2]', 'allows scp-like file transfer between agents', {}, command(async (argv, proxy) => {
       if (!argv.arg1 || !argv.arg2) {

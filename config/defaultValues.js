@@ -17,7 +17,7 @@ module.exports = {
   },
 
   agent: {
-    plugins: ['ceph, rbd', 'samba', 'iscsi', 'ntp', 'rgw', 'scp'],
+    plugins: ['ceph, rbd', 'samba', 'iscsi', 'ntp', 'rgw', 'scp', 'updater'],
     db: path.join(__dirname, '../data', 'cluster.db')
   }
 };
