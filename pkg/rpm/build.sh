@@ -8,7 +8,7 @@ rm -rf "${DIR}/SOURCE"
 rm -rf "${DIR}/SPEC"
 mkdir -p "${DIR}/SOURCE"
 mkdir -p "${DIR}/SPEC"
-mkdir -p ~/rpmbuild/{SOURCES,SPEC}
+mkdir -p ~/rpmbuild/{SOURCES,SPECS}
 
 PACKAGE="$(eval node '${DIR}/../read-json.js' 'name' '${DIR}/../../package.json')"
 VERSION="$(eval node '${DIR}/../read-json.js' 'version' '${DIR}/../../package.json')"
@@ -42,7 +42,8 @@ mv -f "${DIR}"/SOURCE/${PACKAGE}-${VERSION}.tar.gz ~/rpmbuild/SOURCES/"${PACKAGE
 
 echo "creating spec file..."
 
-SPEC_FILE="${DIR}/SPEC/${PACKAGE}.spec"
+SPEC_FILENAME="${PACKAGE}.spec"
+SPEC_FILE="${DIR}/SPEC/${SPEC_FILENAME}"
 
 echo "Name: ${PACKAGE}" >> "${SPEC_FILE}"
 echo "Version: ${VERSION}" >> "${SPEC_FILE}"
@@ -77,6 +78,7 @@ cat "${DIR}/lib/install.sh" >> "${SPEC_FILE}"
 echo "" >> "${SPEC_FILE}"
 echo "" >> "${SPEC_FILE}"
 echo "%files" >> "${SPEC_FILE}"
+echo "/usr/local/lib/kaveh-cluster-ctrl" >> "${SPEC_FILE}"
 echo "#doc" >> "${SPEC_FILE}"
 echo "" >> "${SPEC_FILE}"
 echo "" >> "${SPEC_FILE}"
@@ -100,7 +102,10 @@ echo "" >> "${SPEC_FILE}"
 echo "%changelog" >> "${SPEC_FILE}"
 echo "" >> "${SPEC_FILE}"
 
+rm -f "~/rpmbuild/SPECS/${SPEC_FILENAME}"
+cp -f "${SPEC_FILE}" ~/rpmbuild/SPECS/${SPEC_FILENAME}
 
+rpmbuild -bb ~/rpmbuild/SPECS/${SPEC_FILENAME}
 
 
 
