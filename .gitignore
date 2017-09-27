@@ -7,3 +7,4 @@
 /pkg/rpm/SOURCE
 /pkg/rpm/SPEC
 /pkg/rpm/TRIGGER
+/pkg/rpm/*.rpm

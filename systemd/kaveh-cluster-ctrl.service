@@ -1,7 +1,7 @@
 [Unit]
 Description=Kaveh Cluster Management Agent
-After=network-online.target local-fs.target time-sync.target
-Wants=network-online.target local-fs.target time-sync.target
+After=network-online.target local-fs.target time-sync.target atd.service
+Wants=network-online.target local-fs.target time-sync.target atd.service
 Before=target.service smbd.service smb.service
 
 [Service]

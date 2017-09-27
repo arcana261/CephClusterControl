@@ -4,8 +4,10 @@
 ## Install pre-requisites for rpm packaging:
 
 ```bash
-yum install @ development-tools
-yum install fedora-packager
+yum install rpm-build at
+systemctl enable atd
+systemctl restart atd
+systemctl status atd
 ```
 
 
