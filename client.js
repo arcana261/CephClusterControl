@@ -1122,7 +1122,7 @@ async function main() {
     .command('lshost', 'view all RPC host agents', {}, command(async (argv, proxy) => {
       printHosts(await proxy.hosts());
     }))
-    .command('update <path> [...hosts]', 'allows remotely updating agent services', {
+    .command('update <path> [hosts...]', 'allows remotely updating agent services', {
       'allow-downgrade': {
         describe: 'allows downgrading',
         default: false,
@@ -1142,6 +1142,18 @@ async function main() {
       const lastSpeed = {};
 
       await proxy.updater.update(argv.path, (report) => {
+        report.hosts = report.hosts.sort((x, y) => {
+          if (x.hostname < y.hostname) {
+            return -1;
+          }
+          else if (x.hostname > y.hostname) {
+            return 1;
+          }
+          else {
+            return 0;
+          }
+        });
+
         report.hosts.forEach(x => {
           if (x.speed > 0) {
             lastSpeed[x.hostname] = x.speed;
