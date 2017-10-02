@@ -19,6 +19,7 @@ const TransferReporter = require('./lib/utils/TransferReporter');
 const Distro = require('./lib/utils/Distro');
 const readline = require('readline');
 const EtaReporter = require('./lib/utils/EtaReporter');
+const PackageJson = require('./package.json');
 
 let yargs = null;
 
@@ -977,6 +978,8 @@ async function main() {
       },
 
       ls: async (argv, proxy) => {
+        patience();
+
         TablePrinter.print(await proxy.samba.ls(argv.host), [{key: 'Host', value: x => x.host},
           {key: 'Name', value: x => x.name},
           {key: 'Hidden', value: x => (!x.browsable) ? 'Yes' : 'No'},
@@ -1201,6 +1204,11 @@ async function main() {
 
       }, argv['allow-downgrade'], argv.hosts);
 
+    }))
+    .command('version', 'print version and exit', {}, command(async (argv, proxy) => {
+      console.log('Kluster Management CLI (Command Line Interface)');
+      console.log(PackageJson.version);
+      console.log();
     }))
     .command('scp [arg1] [arg2]', 'allows scp-like file transfer between agents', {}, command(async (argv, proxy) => {
       if (!argv.arg1 || !argv.arg2) {
