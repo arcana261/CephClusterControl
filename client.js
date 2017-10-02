@@ -112,6 +112,18 @@ function compressArray(arr, n) {
  * @param {Array.<IScsiTarget>} shares
  */
 function printIScsiTable(shares) {
+  shares = shares.sort((x, y) => {
+    if (x.host < y.host) {
+      return -1;
+    }
+    else if (x.host > y.host) {
+      return 1;
+    }
+    else {
+      return 0;
+    }
+  });
+
   TablePrinter.print(shares, [{key: 'Host', value: x => x.host !== null ? x.host : ''},
     {key: 'IQN', value: x => x.stringifiedIqn},
     {key: 'Client', value: x => x.authentication !== null ? x.authentication.userId : ''},
