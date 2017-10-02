@@ -16,8 +16,6 @@ VERSION="__VERSION__"
 /bin/chmod 755 /usr/local/bin/kluster-cli
 /bin/chmod 755 /usr/local/bin/kluster-agent
 
-rm -rf /var/lib/kaveh-cluster-ctrl/cluster.db
-
 systemctl daemon-reload
 
 if [ -f /tmp/.kaveh-cluster-ctrl.conf.old ]; then
