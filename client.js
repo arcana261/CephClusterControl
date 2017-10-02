@@ -91,6 +91,24 @@ function patience() {
 }
 
 /**
+ * @param {Array.<string>} arr
+ * @param {number} n
+ * @returns {Array.<string>}
+ */
+function compressArray(arr, n) {
+  return arr.reduce((prev, cur) => {
+    if (prev.length < 1 || prev[prev.length - 1].length >= n) {
+      prev.push([cur]);
+    }
+    else {
+      prev[prev.length - 1].push(cur);
+    }
+
+    return prev;
+  }, []).map(x => x.join(', '))
+}
+
+/**
  * @param {Array.<IScsiTarget>} shares
  */
 function printIScsiTable(shares) {
@@ -126,20 +144,23 @@ function printRadosGatewayTable(users) {
  * @param {WorkerInfoResponse} hosts
  */
 function printHosts(hosts) {
+  hosts = hosts.sort((x, y) => {
+    if (x.hostname < y.hostname) {
+      return -1;
+    }
+    else if (x.hostname > y.hostname) {
+      return 1;
+    }
+    else {
+      return 0;
+    }
+  });
+
   TablePrinter.print(hosts, [{key: 'Host', value: x => x.hostname},
     {key: 'Version', value: x => x.version},
-    {key: 'Types', value: x => x.types.reduce((prev, cur) => {
-      if (prev.length < 1 || prev[prev.length - 1].length >= 5) {
-        prev.push([cur]);
-      }
-      else {
-        prev[prev.length - 1].push(cur);
-      }
-
-      return prev;
-    }, []).map(x => x.join(', '))},
+    {key: 'Types', value: x => compressArray(x.types, 6)},
     {key: 'OS', value: x => Distro.formatDistro(x.distro)},
-    {key: 'IP', value: x => x.ip}]);
+    {key: 'IP', value: x => compressArray(x.ip, 3)}]);
 
   console.log();
 }
