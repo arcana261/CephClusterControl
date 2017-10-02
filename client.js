@@ -1106,7 +1106,7 @@ async function main() {
         console.log();
 
         TablePrinter.print(Object.entries(share.acl), [{key: 'Username', value: ([user]) => user},
-          {key: 'Password', value: ([, acl]) => acl.password},
+          {key: 'Password', value: ([, acl]) => acl.password || ''},
           {key: 'Permission', value: ([, acl]) => SambaAuthUtils.stringifyPermission(acl.permission)}]);
         console.log();
       },
