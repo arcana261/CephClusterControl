@@ -1202,7 +1202,7 @@ async function main() {
         dy = lines.length;
         dx = lines[lines.length - 1].length;
 
-      }, argv['allow-downgrade'], argv.hosts);
+      }, argv['allow-downgrade'], argv.hosts.length < 1 ? null : argv.hosts);
 
     }))
     .command('version', 'print version and exit', {}, command(async (argv, proxy) => {
