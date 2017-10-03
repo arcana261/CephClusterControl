@@ -24,6 +24,7 @@ if [ "${VERSION}" == "${CUR_VERSION}" ]; then
   /bin/rm -f /usr/local/lib/kaveh-cluster-ctrl/node/bin/npm
   /bin/rm -f /usr/local/lib/kaveh-cluster-ctrl/node/bin/npx
   /bin/rm -f /usr/local/lib/kaveh-cluster-ctrl/VERSION
+  /bin/rm -rf /usr/local/lib/kaveh-cluster-ctrl/targetcli-backup
   /bin/rm -f /etc/kaveh-cluster-ctrl.conf
   /bin/rm -rf /var/lib/kaveh-cluster-ctrl
 fi

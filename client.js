@@ -20,6 +20,8 @@ const Distro = require('./lib/utils/Distro');
 const readline = require('readline');
 const EtaReporter = require('./lib/utils/EtaReporter');
 const PackageJson = require('./package.json');
+const os = require('os');
+const LocalToken = require('./lib/utils/LocalToken');
 
 let yargs = null;
 
@@ -1209,6 +1211,10 @@ async function main() {
       console.log('Kluster Management CLI (Command Line Interface)');
       console.log(PackageJson.version);
       console.log();
+    }))
+    .command('stoplocal', 'stop localhost service', {}, command(async (argv, proxy) => {
+      await proxy.client.call('worker', os.hostname(), 'agent.shutdown',
+        [await LocalToken.read()], {timeout: -1});
     }))
     .command('scp [arg1] [arg2]', 'allows scp-like file transfer between agents', {}, command(async (argv, proxy) => {
       if (!argv.arg1 || !argv.arg2) {

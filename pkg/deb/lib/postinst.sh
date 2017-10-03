@@ -34,6 +34,8 @@ if [ -f /tmp/.kaveh-cluster-ctrl-enable-service.cmd ]; then
     /bin/systemctl enable kaveh-cluster-ctrl.service
 fi
 
+mkdir -p /usr/local/lib/kaveh-cluster-ctrl/targetcli-backup
+
 rm -f /usr/local/lib/kaveh-cluster-ctrl/VERSION
 echo "${VERSION}" > /usr/local/lib/kaveh-cluster-ctrl/VERSION
 

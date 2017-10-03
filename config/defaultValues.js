@@ -18,6 +18,12 @@ module.exports = {
 
   agent: {
     plugins: ['ceph, rbd', 'samba', 'iscsi', 'ntp', 'rgw', 'scp', 'updater'],
-    db: path.join(__dirname, '../data', 'cluster.db')
+    db: '/var/lib/kaveh-cluster-ctrl/cluster.db'
+  },
+
+  iscsi: {
+    backup_interval_seconds: 3600,
+    keep_files: 336,
+    path: '/usr/local/lib/kaveh-cluster-ctrl/targetcli-backup'
   }
 };

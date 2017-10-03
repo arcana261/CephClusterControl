@@ -7,6 +7,7 @@ Before=target.service smbd.service smb.service
 [Service]
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=/usr/local/bin/kluster-agent
+ExecStop=/usr/local/bin/kluster-cli stoplocal
 ExecReload=/bin/kill -HUP $MAINPID
 TasksMax=infinity
 Restart=on-failure

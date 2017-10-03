@@ -66,3 +66,4 @@ mv "${DIR}/BUILD.deb" "${DIR}/${PACKAGE}.deb"
 cp -f "${DIR}/${PACKAGE}.deb" "${DIR}/${PACKAGE}-${VERSION}.deb"
 cp -f "${DIR}/${PACKAGE}.deb" "${DIR}/${PACKAGE}-latest.deb"
 
+bash "${DIR}/cleanup.sh"

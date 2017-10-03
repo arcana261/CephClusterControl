@@ -25,8 +25,13 @@ const Condition = require('./lib/utils/Condition');
 const EtcParser = require('./lib/utils/EtcParser');
 const MultipartServer = require('./lib/multipart');
 const UpdaterServer = require('./lib/updater');
+const LocalToken = require('./lib/utils/LocalToken');
 
 const onRbdAutoMount = new Condition();
+
+let rbdClient = null;
+let sambaClient = null;
+let iscsiClient = null;
 
 function ensureDirectory(p) {
   return MkDir.path(path.dirname(p));
@@ -64,6 +69,18 @@ async function main() {
     .option('db', {
       describe: 'local LevelDB database to use',
       default: process.env.NODE_ENV === 'development' ? path.join(__dirname, 'data', 'cluster.db') : settings.agent.db
+    })
+    .option('iscsi-backup-interval', {
+      describe: 'interval in seconds to backup targetcli config',
+      default: settings.iscsi.backup_interval_seconds
+    })
+    .option('iscsi-backup-keepfiles', {
+      describe: 'number of old backups to keep',
+      default: settings.iscsi.keep_files
+    })
+    .option('iscsi-backup-path', {
+      describe: 'location to save iscsi backups',
+      default: process.env.NODE_ENV === 'development' ? path.join(__dirname, 'data', 'targetcli-backup') : settings.iscsi.path
     })
     .help()
     .argv;
@@ -136,6 +153,8 @@ async function main() {
             log.error('giving up on automounting rbd volumes');
           }
         });
+
+        rbdClient = client;
       }
       else {
         log.warn('Plugin: "rbd" requested but could not be enabled');
@@ -172,6 +191,8 @@ async function main() {
 
         server.addHandler('samba', client);
         await server.addType('samba');
+
+        sambaClient = client;
       }
       else {
         log.warn('Plugin: "samba" requested but could not be enabled');
@@ -208,6 +229,18 @@ async function main() {
 
         server.addHandler('iscsi', client);
         await server.addType('iscsi');
+
+        setInterval(async () => {
+          try {
+            await client.performBackup(yargs['iscsi-backup-path'], Number(yargs['iscsi-backup-keepfiles']));
+          }
+          catch (err) {
+            log.warn('could not auto-backup targetcli config');
+            log.warn(ErrorFormatter.format(err));
+          }
+        }, yargs['iscsi-backup-interval'] * 1000);
+
+        iscsiClient = client;
       }
       else {
         log.warn('Plugin: "iscsi" requested but could not be enabled');
@@ -301,9 +334,56 @@ async function main() {
     log.warn('Plugin: "updater" is disabled. provide "updater" in startup script to enable it');
   }
 
-  Promise.all(inits)
-    .then(() => server.types.forEach(x => log.info(`Plugin Enabled: "${x}"`)))
-    .catch(err => log.error(ErrorFormatter.format(err)));
+  await LocalToken.generateNew();
+
+  server.addHandler('agent', {
+    shutdown: async token => {
+      const expectedToken = await LocalToken.read();
+
+      if (token !== expectedToken) {
+        throw new Error(`provided token "${token}" does not match expected token "${expectedToken}"`);
+      }
+
+      try {
+        if (iscsiClient !== null) {
+          await iscsiClient.preShutDown();
+        }
+      }
+      catch (err) {
+        log.warn('could not stop iscsi service');
+        log.warn(ErrorFormatter.format(err));
+      }
+
+      try {
+        if (sambaClient !== null) {
+          await sambaClient.preShutDown();
+        }
+      }
+      catch (err) {
+        log.warn('could not stop samba service');
+        log.warn(ErrorFormatter.format(err));
+      }
+
+      try {
+        if (rbdClient !== null) {
+          await rbdClient.preShutDown();
+        }
+      }
+      catch (err) {
+        log.warn('could not unmount remaining rbd volumes');
+        log.warn(ErrorFormatter.format(err));
+      }
+
+      setTimeout(() => {
+        process.exit(0);
+      }, 1000);
+    }
+  });
+
+  await Promise.all(inits);
+  server.types.forEach(x => log.info(`Plugin Enabled: "${x}"`));
+
+  log.info('RPC Server is Ready! ^_*');
 }
 
 main().catch(err => {
