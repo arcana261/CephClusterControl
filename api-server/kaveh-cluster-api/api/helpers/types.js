@@ -18,6 +18,14 @@ class TypeUtils {
    * @param {*} value
    * @returns {boolean}
    */
+  static isHashObject(value) {
+    return value && (typeof value === 'object') && (!(value instanceof Array));
+  }
+
+  /**
+   * @param {*} value
+   * @returns {boolean}
+   */
   static isString(value) {
     return typeof value === 'string';
   }

@@ -16,6 +16,10 @@ class CustomExceptions {
   static get NotFoundError() {
     return require('./NotFoundError');
   }
+
+  static get CustomError() {
+    return require('./CustomError');
+  }
 }
 
 module.exports = CustomExceptions;
