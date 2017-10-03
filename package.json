@@ -1,6 +1,6 @@
 {
   "name": "kaveh-cluster-ctrl",
-  "version": "0.1.44",
+  "version": "0.1.45",
   "description": "provides agents and cli to work with rbd-based shares remotely",
   "main": "index.js",
   "scripts": {
