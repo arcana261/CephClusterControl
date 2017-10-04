@@ -230,7 +230,7 @@ async function main() {
         server.addHandler('iscsi', client);
         await server.addType('iscsi');
 
-        setInterval(async () => {
+        const backupFn = async () => {
           try {
             log.info('targetcli auto-backup started...');
             log.info(`targetcli auto-backup, keeping max ${parseInt(yargs['iscsi-backup-keepfiles'])} last files, ` +
@@ -242,8 +242,11 @@ async function main() {
             log.warn('could not auto-backup targetcli config');
             log.warn(ErrorFormatter.format(err));
           }
-        }, parseInt(yargs['iscsi-backup-interval']) * 1000);
+        };
 
+        await backupFn();
+
+        setInterval(backupFn, parseInt(yargs['iscsi-backup-interval']) * 1000);
         log.info(`targetcli auto-backup scheduled for every ${parseInt(yargs['iscsi-backup-interval'])} seconds, ` +
           `keeping max ${parseInt(yargs['iscsi-backup-keepfiles'])} last files, ` +
           `saved in "${yargs['iscsi-backup-path']}"`);

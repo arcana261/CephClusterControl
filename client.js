@@ -1150,8 +1150,7 @@ async function main() {
       let reportChangeId = 0;
       let lastPrintedReportId = 0;
       let intervalHandlerError = null;
-
-      let intervalHandle = setInterval(() => {
+      const reporterFn = () => {
         try {
           if (lastReport !== null && reportChangeId !== lastPrintedReportId) {
             lastPrintedReportId = reportChangeId;
@@ -1219,7 +1218,9 @@ async function main() {
         catch (err) {
           intervalHandlerError = err;
         }
-      }, 500);
+      };
+
+      let intervalHandle = setInterval(reporterFn, 500);
 
       try {
         await proxy.updater.update(argv.path, (report) => {
@@ -1236,6 +1237,7 @@ async function main() {
       }
       finally {
         clearInterval(intervalHandle);
+        reporterFn();
       }
 
     }))
