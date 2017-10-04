@@ -232,13 +232,21 @@ async function main() {
 
         setInterval(async () => {
           try {
-            await client.performBackup(yargs['iscsi-backup-path'], Number(yargs['iscsi-backup-keepfiles']));
+            log.info('targetcli auto-backup started...');
+            log.info(`targetcli auto-backup, keeping max ${parseInt(yargs['iscsi-backup-keepfiles'])} last files, ` +
+              `saved in "${yargs['iscsi-backup-path']}"`);
+
+            await client.performBackup(yargs['iscsi-backup-path'], parseInt(yargs['iscsi-backup-keepfiles']));
           }
           catch (err) {
             log.warn('could not auto-backup targetcli config');
             log.warn(ErrorFormatter.format(err));
           }
-        }, yargs['iscsi-backup-interval'] * 1000);
+        }, parseInt(yargs['iscsi-backup-interval']) * 1000);
+
+        log.info(`targetcli auto-backup scheduled for every ${parseInt(yargs['iscsi-backup-interval'])} seconds, ` +
+          `keeping max ${parseInt(yargs['iscsi-backup-keepfiles'])} last files, ` +
+          `saved in "${yargs['iscsi-backup-path']}"`);
 
         iscsiClient = client;
       }

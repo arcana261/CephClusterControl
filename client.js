@@ -570,7 +570,7 @@ async function main() {
 
         const result = await proxy.rbd.getMapped({host: argv.host, id: argv.id});
 
-        TablePrinter.print(result, [{key: 'Host', value: x => `${x.hostname}@${x.instanceId}`},
+        TablePrinter.print(result, [{key: 'Host', value: x => x.hostname},
           {key: 'Image', value: x => x.image}, {key: 'Id', value: x => `${x.rbdId}`},
           {key: 'Snap', value: x => x.snap || ''}, {key: 'Device', value: x => x.device},
           {key: 'Size', value: x => (x.diskSize && SizeParser.stringify(x.diskSize)) || ''},
@@ -721,8 +721,9 @@ async function main() {
 
       'destroy-data': {
         describe: 'whether to delete all data when deleting iscsi share',
-        default: '-',
-        requiresArg: true
+        default: false,
+        requiresArg: false,
+        boolean: true
       },
 
       'password': {
