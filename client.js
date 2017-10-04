@@ -1146,66 +1146,97 @@ async function main() {
       console.log();
 
       const lastSpeed = {};
+      let lastReport = null;
+      let reportChangeId = 0;
+      let lastPrintedReportId = 0;
+      let intervalHandlerError = null;
 
-      await proxy.updater.update(argv.path, (report) => {
-        report.hosts = report.hosts.sort((x, y) => {
-          if (x.hostname < y.hostname) {
-            return -1;
-          }
-          else if (x.hostname > y.hostname) {
-            return 1;
-          }
-          else {
-            return 0;
-          }
-        });
+      let intervalHandle = setInterval(() => {
+        try {
+          if (lastReport !== null && reportChangeId !== lastPrintedReportId) {
+            lastPrintedReportId = reportChangeId;
 
-        report.hosts.forEach(x => {
-          if (x.speed > 0) {
-            lastSpeed[x.hostname] = x.speed;
-          }
-        });
+            lastReport.hosts = lastReport.hosts.sort((x, y) => {
+              if (x.hostname < y.hostname) {
+                return -1;
+              }
+              else if (x.hostname > y.hostname) {
+                return 1;
+              }
+              else {
+                return 0;
+              }
+            });
 
-        const table = TablePrinter.format(report.hosts, [
-          {key: 'Hostname', value: x => x.hostname},
-          {key: 'Version', value: x => x.version},
-          {key: 'OS', value: x => Distro.formatDistro(x.distro)},
-          {key: 'Status', value: x => x.status},
-          {key: 'Transferred', value: x => SizeParser.stringify(x.transferred)},
-          {key: 'Percent', value: x => Math.round((x.transferred / report.size) * 100)},
-          {key: 'Speed', value: x => `${SizeParser.stringify(x.speed)}/s`},
-          {key: 'ETA', value: x => {
-            let speed = Math.max(x.speed, x.hostname in lastSpeed ? lastSpeed[x.hostname] : 0);
+            lastReport.hosts.forEach(x => {
+              if (x.speed > 0) {
+                lastSpeed[x.hostname] = x.speed;
+              }
+            });
 
-            if (speed > 0) {
-              return EtaReporter.format((report.size - x.transferred) / speed * 1000);
+            const table = TablePrinter.format(lastReport.hosts, [
+              {key: 'Hostname', value: x => x.hostname},
+              {key: 'Version', value: x => x.version},
+              {key: 'OS', value: x => Distro.formatDistro(x.distro)},
+              {key: 'Status', value: x => x.status},
+              {key: 'Transferred', value: x => SizeParser.stringify(x.transferred)},
+              {key: 'Percent', value: x => Math.round((x.transferred / lastReport.size) * 100)},
+              {key: 'Speed', value: x => `${SizeParser.stringify(x.speed)}/s`},
+              {
+                key: 'ETA', value: x => {
+                let speed = Math.max(x.speed, x.hostname in lastSpeed ? lastSpeed[x.hostname] : 0);
+
+                if (speed > 0) {
+                  return EtaReporter.format((lastReport.size - x.transferred) / speed * 1000);
+                }
+                else {
+                  return '...';
+                }
+              }
+              }
+            ]);
+
+            const lines = [
+              `Package: ${lastReport.path}`,
+              `Size: ${SizeParser.stringify(lastReport.size)}`,
+              `Version: ${lastReport.version === null ? 'pending' : lastReport.version}`,
+              `Target OS: ${lastReport.target}`,
+              '', ... table.split('\n'), ''
+            ];
+
+            readline.moveCursor(process.stdout, -dx, 0);
+            for (let i = 0; i < dy; i++) {
+              readline.moveCursor(process.stdout, 0, -1);
+              readline.clearLine(process.stdout, 0);
             }
-            else {
-              return '...';
-            }
-          }}
-        ]);
 
-        const lines = [
-          `Package: ${report.path}`,
-          `Size: ${SizeParser.stringify(report.size)}`,
-          `Version: ${report.version === null ? 'pending' : report.version}`,
-          `Target OS: ${report.target}`,
-          '', ... table.split('\n'), ''
-        ];
+            lines.forEach(line => console.log(line));
 
-        readline.moveCursor(process.stdout, -dx, 0);
-        for (let i = 0; i < dy; i++) {
-          readline.moveCursor(process.stdout, 0, -1);
-          readline.clearLine(process.stdout, 0);
+            dy = lines.length;
+            dx = lines[lines.length - 1].length;
+          }
         }
+        catch (err) {
+          intervalHandlerError = err;
+        }
+      }, 500);
 
-        lines.forEach(line => console.log(line));
+      try {
+        await proxy.updater.update(argv.path, (report) => {
+          if (intervalHandlerError !== null) {
+            let err = intervalHandlerError;
+            intervalHandlerError = null;
 
-        dy = lines.length;
-        dx = lines[lines.length - 1].length;
+            throw err;
+          }
 
-      }, argv['allow-downgrade'], argv.hosts.length < 1 ? null : argv.hosts);
+          lastReport = report;
+          reportChangeId = reportChangeId + 1;
+        }, argv['allow-downgrade'], argv.hosts.length < 1 ? null : argv.hosts);
+      }
+      finally {
+        clearInterval(intervalHandle);
+      }
 
     }))
     .command('version', 'print version and exit', {}, command(async (argv, proxy) => {

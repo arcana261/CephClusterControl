@@ -27,5 +27,17 @@ if [ "${VERSION}" == "${CUR_VERSION}" ]; then
   /bin/rm -rf /usr/local/lib/kaveh-cluster-ctrl/targetcli-backup
   /bin/rm -f /etc/kaveh-cluster-ctrl.conf
   /bin/rm -rf /var/lib/kaveh-cluster-ctrl
+
+  if [ -d "/tmp/kaveh-agent-token" ]; then
+    /bin/rm -rf /tmp/kaveh-agent-token
+  fi
+
+  if [ -d "/tmp/kaveh-multipart" ]; then
+    /bin/rm -rf /tmp/kaveh-multipart
+  fi
+
+  if [ -d "/tmp/kaveh-updater" ]; then
+    /bin/rm -rf /tmp/kaveh-updater
+  fi
 fi
 

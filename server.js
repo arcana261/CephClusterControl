@@ -309,6 +309,16 @@ async function main() {
         server.addHandler('multipart', client);
 
         await server.addType('multipart');
+
+        await client.cleanupTempFolder();
+        log.info('cleaned up old temp files for scp(multipart) service...');
+
+        setInterval(async () => {
+          log.info('cleaning up scp old files...');
+          await client.cleanupTempFolder();
+          log.info('old scp files cleaned up');
+        }, 3600 * 1000);
+        log.info('scheduled cleaning scp temp folder every 1 hour...');
       }
       else {
         log.warn('Plugin: "scp" requested but could not be enabled');
@@ -329,6 +339,16 @@ async function main() {
         server.addHandler('updater', client);
 
         await server.addType('updater');
+
+        await client.cleanupTempFolder();
+        log.info('cleaned up old temp files for updater service...');
+
+        setInterval(async () => {
+          log.info('cleaning up updater old files...');
+          await client.cleanupTempFolder();
+          log.info('old updater files cleaned up');
+        }, 3600 * 1000);
+        log.info('scheduled cleaning updater temp folder every 1 hour...');
       }
       else {
         log.warn('Plugin: "updater" requested but could not be enabled');
