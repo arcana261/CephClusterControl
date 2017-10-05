@@ -1,0 +1,14 @@
+{
+  "name": "-",
+  "version": "0",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+  },
+  "author": "",
+  "license": "",
+  "dependencies": {
+  },
+  "devDependencies": {
+  }
+}

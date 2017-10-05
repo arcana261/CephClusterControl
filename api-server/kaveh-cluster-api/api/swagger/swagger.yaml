@@ -1,60 +1,754 @@
 swagger: "2.0"
 info:
-  version: "0.0.1"
-  title: Hello World App
+  version: "0.1"
+  title: Kluster API
+  description: |
+    Provides mechanism to manage RBD related storage and VMs in a Keloud-Enabled cluster.
 # during dev, should point to your local machine
-host: localhost:10010
+host: localhost:3500
 # basePath prefixes all resource paths 
 basePath: /
 # 
 schemes:
   # tip: remove http to make production-grade
   - http
-  - https
 # format of bodies a client can send (Content-Type)
 consumes:
   - application/json
 # format of the responses to the client (Accepts)
 produces:
   - application/json
+securityDefinitions:
+  basic:
+    type: basic
+    description: http based authentication
 paths:
-  /hello:
-    # binds a127 app logic to a route
-    x-swagger-router-controller: hello_world
+  /cluster:
+    x-swagger-router-controller: cluster
     get:
-      description: Returns 'Hello' to the caller
-      # used as the method name of the controller
-      operationId: hello
-      parameters:
-        - name: name
-          in: query
-          description: The name of the person to whom to say hello
-          required: false
-          type: string
+      description: gets list of defined clusters
+      operationId: getClusterList
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Cluster
       responses:
-        "200":
-          description: Success
+        200:
+          description: returns list of defined clusters
           schema:
-            # a pointer to a definition
-            $ref: "#/definitions/HelloWorldResponse"
-        # responses may fall through to errors
-        default:
-          description: Error
+            type: array
+            items:
+              $ref: '#/definitions/ClusterConfig'
+        500:
+          $ref: '#/responses/InternalServerError'
+    put:
+      description: add a new cluster
+      operationId: addCluster
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Cluster
+      parameters:
+        - name: cluster
+          in: body
+          description: new cluster to add
           schema:
-            $ref: "#/definitions/ErrorResponse"
+            $ref: '#/definitions/ClusterConfig'
+          required: true
+      responses:
+        201:
+          description: indicates new cluster is created
+        409:
+          $ref: '#/responses/Conflict'
+        400:
+          $ref: '#/responses/BadRequest'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}:
+    x-swagger-router-controller: cluster
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+    get:
+      description: returns information about a specific cluster
+      operationId: getCluster
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Cluster
+      responses:
+        200:
+          description: returns configuration for saved cluster
+          schema:
+            $ref: '#/definitions/ClusterConfig'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    patch:
+      description: updates a cluster configuration
+      operationId: updateCluster
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Cluster
+      parameters:
+        - name: cluster
+          in: body
+          description: cluster config to update
+          schema:
+            $ref: '#/definitions/ClusterConfig'
+          required: true
+      responses:
+        200:
+          description: indicates cluster config is updated
+        400:
+          $ref: '#/responses/BadRequest'
+        404:
+          $ref: '#/responses/NotFound'
+    delete:
+      description: deletes a cluster configuration
+      operationId: deleteCluster
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Cluster
+      responses:
+        200:
+          description: indicates cluster config is deleted
+        400:
+          $ref: '#/responses/BadRequest'
+        404:
+          $ref: '#/responses/NotFound'
+  /cluster/{clusterName}/host:
+    x-swagger-router-controller: host
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+    get:
+      description: gets list of hosts and their status
+      operationId: listClusterHosts
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Host
+      responses:
+        200:
+          description: returns known agents and VMs in system
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/Host'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/host/{hostName}:
+    x-swagger-router-controller: host
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: hostName
+        in: path
+        description: name of requested host
+        type: string
+        required: true
+    get:
+      description: returns information about requested hostname
+      operationId: getClusterHost
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Host
+      responses:
+        200:
+          description: returns information about requested user
+          schema:
+            $ref: '#/definitions/Host'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    delete:
+      description: deletes a down or missing host
+      operationId: deleteClusterHost
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Host
+      responses:
+        200:
+          description: indictes host is deleted
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/samba:
+    x-swagger-router-controller: samba
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+    get:
+      description: gets list of samba shares defined
+      operationId: listSambaShares
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Samba
+      responses:
+        200:
+          description: returns list of samba shares defined
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/SambaShare'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/iscsi:
+    x-swagger-router-controller: iscsi
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+    get:
+      description: gets list of iscsi targets defined
+      operationId: listScsiTargets
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+      responses:
+        200:
+          description: returns list of iscsi targets defined
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/IScsiTarget'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/iscsi/host:
+    x-swagger-router-controller: iscsi
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+    get:
+      description: returns list of host names serving iscsi targets
+      operationId: listScsiHosts
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+        - Host
+      responses:
+        200:
+          description: returns list of hosts
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/IScsiHost'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/iscsi/host/{hostName}:
+    x-swagger-router-controller: iscsi
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: hostName
+        in: path
+        description: name of requested host
+        type: string
+        required: true
+    get:
+      description: returns information a host containing iscsi target
+      operationId: getScsiHost
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+        - Host
+      responses:
+        200:
+          description: returns requested host
+          schema:
+            $ref: '#/definitions/IScsiHost'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    delete:
+      description: deletes a down or missing iscsi host
+      operationId: deleteScsiHost
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+        - Host
+      responses:
+        200:
+          description: indicates requested iscsi host is deleted
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    patch:
+      description: used only for enabling/disabling discovery auth on portal
+      operationId: updateScsiHost
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+        - Host
+      responses:
+        200:
+          description: indicates requested iscsi host is updated
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/iscsi/{targetName}:
+    x-swagger-router-controller: iscsi
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: targetName
+        in: path
+        description: name of iscsi target
+        type: string
+        required: true
+    get:
+      description: gets information about a specific iscsi target
+      operationId: getScsiTarget
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+      responses:
+        200:
+          description: returns information about requested target
+          schema:
+            $ref: '#/definitions/IScsiTarget'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    patch:
+      description: updates an existing iscsi target
+      operationId: updateScsiTarget
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+      parameters:
+        - name: target
+          in: body
+          description: new iscsi target to add
+          schema:
+            $ref: '#/definitions/IScsiTarget'
+          required: true
+      responses:
+        200:
+          description: indicates iscsi target was updated
+        400:
+          $ref: '#/responses/BadRequest'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    delete:
+      description: deletes an existing iscsi target
+      operationId: deleteScsiTarget
+      security:
+        - basic: []
+      tags:
+        - iSCSI
+      responses:
+        200:
+          description: indicates iscsi target was deleted
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
   /swagger:
     x-swagger-pipe: swagger_raw
 # complex objects have schema definitions
+responses:
+  Conflict:
+    description: HTTP error 409 depicting a situation in which something exists already or does not
+    schema:
+      $ref: '#/definitions/SystemError'
+  InternalServerError:
+    description: HTTP error 500 caused by a programming error
+    schema:
+      $ref: '#/definitions/SystemError'
+  NotFound:
+    description: HTTP error 404 caused when looking for something that does not exist
+    schema:
+      $ref: '#/definitions/SystemError'
+  BadRequest:
+    description: HTTP error 400 caused when input parameters are in wrong format
+    schema:
+      $ref: '#/definitions/SystemError'
 definitions:
-  HelloWorldResponse:
+  SystemError:
+    type: object
+    description: encapsulates error messages
     required:
+      - code
       - message
+      - stack
+    example:
+      code: 400
+      message: just a bad request
+      stack: test.js at line 1000
     properties:
+      code:
+        type: integer
+        description: an integer which may provide more information about error
       message:
         type: string
-  ErrorResponse:
-    required:
-      - message
-    properties:
-      message:
+        description: a text message which may provide more insight about error
+      stack:
         type: string
+        description: if debugging is enabled, may provide stackstack of exception
+  MessageBrokerConfig:
+    type: object
+    description: |
+      configuration about how to connect to message broker.
+      currently only rabbitmq is supported
+    required:
+      - host
+      - userName
+    properties:
+      host:
+        type: string
+        description: host address of message broker server
+      userName:
+        type: string
+        description: username to use to connect to message broker
+      password:
+        type: string
+        description: password to use to connect to message broker
+      heartbeat:
+        type: integer
+        description: |
+          number of seconds to send heartbeat and keep connection alive.
+          do not change if not necessary.
+        default: 10
+      topic:
+        type: string
+        description: topic name used for communication. do not change if not necessary
+        default: kaveh_cluster_ctrl
+      timeout:
+        type: integer
+        description: |
+          miliseconds to timeout certain RPC calls to active agent services
+          running on cluster nodes.
+  ClusterConfig:
+    type: object
+    description: information about a registered cluster in system
+    required:
+      - name
+      - broker
+    properties:
+      name:
+        type: string
+        description: name given to a cluster
+      broker:
+        $ref: '#/definitions/MessageBrokerConfig'
+  DistroObject:
+    type: object
+    description: shows information about linux distribution running on a host
+    required:
+      - centos
+      - ubuntu
+      - version
+    properties:
+      centos:
+        type: boolean
+        description: 'true if distribution is centos based'
+      ubuntu:
+        type: boolean
+        description: 'true if distribution is ubuntu based'
+      version:
+        type: string
+        description: version of operating system running on host
+  Host:
+    type: object
+    description: shows information about a node agent
+    required:
+      - cluster
+      - types
+      - hostname
+      - version
+      - ip
+      - distro
+      - status
+    properties:
+      cluster:
+        type: string
+        description: cluster name in which host resides in
+      types:
+        type: array
+        description: plugins enabled on host node
+        items:
+          type: string
+      hostname:
+        type: string
+        description: hostname for node agent
+      version:
+        type: string
+        description: version of package running on host node
+      ip:
+        type: array
+        description: list of ip addresses for node host
+        items:
+          type: string
+      distro:
+        $ref: '#/definitions/DistroObject'
+      status:
+        type: string
+        description: shows host status
+        enum:
+          - up
+          - down
+  IScsiAuthentication:
+    type: object
+    description: encapsulates CHAP authentication credentials
+    required:
+      - userId
+      - password
+    properties:
+      userId:
+        type: string
+        description: chap iQN
+      password:
+        type: string
+        description: password
+        pattern: '^[a-z0-9A-Z@#$%]{12}$'
+  IScsiIqn:
+    type: object
+    description: shows parsed IQN information
+    required:
+      - year
+      - month
+      - name
+      - tag
+    properties:
+      year:
+        type: integer
+        description: year part
+      month:
+        type: integer
+        description: month part
+      name:
+        type: string
+        description: name of iSCSI share
+      domain:
+        type: string
+        description: domain part
+      tag:
+        type: string
+        description: tag part
+  IScsiLunList:
+    type: object
+    description: lists LUNs defined for an iSCSI target
+    required:
+      - sizes
+      - image
+      - pool
+    properties:
+      sizes:
+        description: size of LUNs in MB (megabytes)
+        type: array
+        items:
+          type: integer
+          description: size of LUN in MB (megabyte)
+      image:
+        type: string
+        description: rbd image used for LUNs
+      pool:
+        type: string
+        description: rbd pool in which image resides
+      capacity:
+        type: integer
+        description: total capacity of rbd image in MB (megabytes)
+      used:
+        type: integer
+        description: how much storage is used in MB (megabyte)
+  IScsiTarget:
+    type: object
+    description: shows information about an iSCSI target
+    required:
+      - iqn
+      - stringifiedIqn
+    properties:
+      iqn: 
+        $ref: '#/definitions/IScsiIqn'
+      stringifiedIqn:
+        type: string
+        description: full IQN as an string
+      authentication:
+        $ref: '#/definitions/IScsiAuthentication'
+      luns:
+        $ref: '#/definitions/IScsiLunList'
+      host:
+        type: string
+        description: hostname of node containing iscsi target
+      cluster:
+        type: string
+        description: name of cluster hosting target
+      status:
+        type: string
+        description: shows status of iscsi target
+        enum:
+          - up
+          - missing
+          - down
+          - deleting
+  IScsiHost:
+    description: shows information about an iscsi enabled host
+    allOf:
+      - $ref: '#/definitions/Host'
+      - type: object
+        required:
+          - discovery
+        properties:
+          discovery:
+            $ref: '#/definitions/IScsiAuthentication'
+  SambaPermission:
+    type: string
+    description: describes permission a user has to a share
+    enum:
+      - read
+      - write
+      - denied
+  SambaAcl:
+    type: object
+    description: describes credentials a user has to a share
+    required:
+      - permission
+      - userName
+    properties:
+      permission:
+        $ref: '#/definitions/SambaPermission'
+      password:
+        type: string
+        description: password to use for accessing share
+      userName:
+        type: string
+        description: username to use for accessing share
+  SambaShare:
+    type: object
+    description: describes a samba share
+    required:
+      - name
+      - browsable
+      - image
+      - pool
+      - cluster
+      - id
+      - guest
+      - acl
+    properties:
+      name:
+        type: string
+        description: name of samba share
+      comment:
+        type: string
+        description: a comment set for a samba share
+      browsable:
+        type: boolean
+        description: 'if set to false will hide share'
+      image:
+        type: string
+        description: RBD image for share
+      pool:
+        type: string
+        description: RBD pool containing image
+      capacity:
+        type: integer
+        description: amount in MB (megabyte) of samba share capacity
+      used:
+        type: integer
+        description: amount in MB (megabyte) of samba share
+      cluster:
+        type: string
+        description: cluster name containing samba share
+      host:
+        type: string
+        description: host vm containing samba share
+      id:
+        type: string
+        description: ceph credentials to use, usually should be admin
+        default: admin
+      guest:
+        $ref: '#/definitions/SambaPermission'
+      acl:
+        type: array
+        description: list of user credentials for this samba share
+        items:
+          $ref: '#/definitions/SambaAcl'
+  PerformancePoint:
+    type: object
+    description: shows performance collected
+    properties:
+      capacity:
+        type: integer
+        description: capacity of entity in MB (megabytes)
+      used:
+        type: integer
+        description: usage of entity in MB (megabytes)
+      x:
+        type: date-time
+        description: date/time in UTC of sample
+  
+        
+      
+      
+      
+        

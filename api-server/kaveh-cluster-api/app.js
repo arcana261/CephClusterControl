@@ -6,6 +6,12 @@ module.exports = app; // for testing
 const winston = require('winston');
 const expressWinston = require('express-winston');
 
+/*
+
+docker run -td --restart=always --name mariadb -e MYSQL_ROOT_PASSWORD=1234 -p 3306:3306 mariadb:latest
+
+*/
+
 const config = {
   appRoot: __dirname, // required config
   api: true,
