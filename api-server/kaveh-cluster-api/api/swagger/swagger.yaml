@@ -26,6 +26,7 @@ paths:
   /cluster:
     x-swagger-router-controller: cluster
     get:
+      summary: getClusterList
       description: gets list of defined clusters
       operationId: getClusterList
       security:
@@ -43,6 +44,7 @@ paths:
         500:
           $ref: '#/responses/InternalServerError'
     put:
+      summary: addCluster
       description: add a new cluster
       operationId: addCluster
       security:
@@ -75,6 +77,7 @@ paths:
         type: string
         required: true
     get:
+      summary: getCluster
       description: returns information about a specific cluster
       operationId: getCluster
       security:
@@ -92,6 +95,7 @@ paths:
         500:
           $ref: '#/responses/InternalServerError'
     patch:
+      summary: updateCluster
       description: updates a cluster configuration
       operationId: updateCluster
       security:
@@ -114,6 +118,7 @@ paths:
         404:
           $ref: '#/responses/NotFound'
     delete:
+      summary: deleteCluster
       description: deletes a cluster configuration
       operationId: deleteCluster
       security:
@@ -137,6 +142,7 @@ paths:
         type: string
         required: true
     get:
+      summary: listClusterHosts
       description: gets list of hosts and their status
       operationId: listClusterHosts
       security:
@@ -169,6 +175,7 @@ paths:
         type: string
         required: true
     get:
+      summary: getClusterHost
       description: returns information about requested hostname
       operationId: getClusterHost
       security:
@@ -186,6 +193,7 @@ paths:
         500:
           $ref: '#/responses/InternalServerError'
     delete:
+      summary: deleteClusterHost
       description: deletes a down or missing host
       operationId: deleteClusterHost
       security:
@@ -200,6 +208,541 @@ paths:
           $ref: '#/responses/NotFound'
         500:
           $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/ntp/tick:
+    x-swagger-router-controller: ntp
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+    get:
+      summary: getNtpTick
+      description: gets approximate time difference between nodes
+      operationId: getNtpTick
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - NTP
+      responses:
+        200:
+          description: returns approximate time difference between nodes
+          schema:
+            type: array
+            items:
+              type: object
+              properties:
+                host:
+                  type: string
+                  description: hostname of server node
+                diff:
+                  type: integer
+                  description: difference of time in ms (milliseconds)
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/ntp/servers:
+    x-swagger-router-controller: ntp
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+    get:
+      summary: getNtpServers
+      description: gets ntp sync status for nodes
+      operationId: getNtpServers
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - NTP
+      responses:
+        200:
+          description: returns sync status with ntp servers
+          schema:
+            $ref: '#/definitions/NtpHostStatus'
+    post:
+      summary: forceNtpMakeStep
+      description: force make step and sync time in nodes
+      operationId: forceNtpMakeStep
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - NTP
+      responses:
+        200:
+          description: indicates makestep was successfuly issued
+  /cluster/{clusterName}/rbd:
+    x-swagger-router-controller: rbd
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+    get:
+      summary: listRbdImages
+      description: list rbd images in system
+      operationId: listRbdImages
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RBD
+      parameters:
+        - name: pool
+          in: query
+          description: optionally list only rbd images in certain rbd pool
+          type: string
+          required: false
+      responses:
+        200:
+          description: returns list of rbd images
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/RbdImage'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    put:
+      summary: createRbdImage
+      description: create a new rbd image
+      operationId: createRbdImage
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RBD
+      parameters:
+        - name: pool
+          in: query
+          description: optionally list only rbd images in certain rbd pool
+          type: string
+          required: false
+        - name: image
+          in: body
+          description: information about new rbd image to create
+          schema:
+            $ref: '#/definitions/RbdImage'
+          required: true
+      responses:
+        201:
+          description: indicates new rbd image was created successfuly
+        404:
+          $ref: '#/responses/NotFound'
+        409:
+          $ref: '#/responses/Conflict'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/rbd/disk/{imageName}:
+    x-swagger-router-controller: rbd
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: imageName
+        in: path
+        description: rbd image to manage
+        type: string
+        required: true
+      - name: pool
+        in: query
+        description: optional pool name for rbd image
+        type: string
+    get:
+      summary: getRbdImage
+      description: gets information about rbd image
+      operationId: getRbdImage
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RBD
+      responses:
+        200:
+          description: returns information about selected rbd image
+          schema:
+            $ref: '#/definitions/RbdImage'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    delete:
+      summary: deleteRbdImage
+      description: deletes selected rbd image
+      operationId: deleteRbdImage
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RBD
+      responses:
+        200:
+          description: indicates that rbd image was deleted successfuly
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/rbd/mount:
+    x-swagger-router-controller: rbd
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+    get:
+      summary: listRbdMountPoints
+      description: list rbd mount points in whole cluster
+      operationId: listRbdMountPoints
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RBD
+      responses:
+        200:
+          description: returns list of rbd mount points
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/RbdMountPoint'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/rbd/mount/{imageName}:
+    x-swagger-router-controller: rbd
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: imageName
+        in: path
+        description: rbd image to manage
+        type: string
+        required: true
+      - name: pool
+        in: query
+        description: optional pool name for rbd image
+        type: string
+    get:
+      summary: getRbdMountPoint
+      description: gets mount point for specified rbd image
+      operationId: getRbdMountPoint
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RBD
+      responses:
+        200:
+          description: returns mount point
+          schema:
+            $ref: '#/definitions/RbdMountPoint'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    post:
+      summary: mountRbdImage
+      description: mount specified image
+      operationId: mountRbdImage
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RBD
+      parameters:
+        - name: permanent
+          in: query
+          description: whether rbd image should be mounted permanently (surviving reboot)
+          type: boolean
+          required: false
+        - name: host
+          in: query
+          description: target VM to mount on. it is optional, if not specified one will be picked automatically.
+          type: string
+          required: false
+        - name: readOnly
+          in: query
+          description: can be used to mount image as readonly
+          type: boolean
+          required: false
+      responses:
+        200:
+          description: indicates image was mounted successfuly
+          schema:
+            $ref: '#/definitions/RbdMountPoint'
+        404:
+          $ref: '#/responses/NotFound'
+        409:
+          $ref: '#/responses/Conflict'
+        500:
+          $ref: '#/responses/InternalServerError'
+    delete:
+      summary: umountRbdImage
+      description: unmounts rbd image
+      operationId: umountRbdImage
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RBD
+      parameters:
+        - name: host
+          in: query
+          description: optionally unmount rbd image from a specific host
+          required: false
+          type: string
+      responses:
+        200:
+          description: indicates rbd image was unmounted successfuly
+        404:
+          $ref: '#/responses/NotFound'
+        409:
+          $ref: '#/responses/Conflict'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/rgw:
+    x-swagger-router-controller: rgw
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+    get:
+      summary: listRgwShares
+      description: list rgw shares defined in cluster
+      operationId: listRgwShares
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RGW
+      responses:
+        200:
+          description: returns list of RGW shares defined
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/RadosGatewayShare'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    put:
+      summary: addRgwShare
+      description: crate a new rgw user
+      operationId: addRgwShare
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RGW
+      parameters:
+        - name: share
+          in: body
+          description: new share to create
+          schema:
+            $ref: '#/definitions/RadosGatewayShare'
+          required: true
+      responses:
+        201:
+          description: indicates new share was created
+        409:
+          $ref: '#/responses/Conflict'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/rgw/{userName}:
+    x-swagger-router-controller: rgw
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: userName
+        in: path
+        description: rgw username to query or change
+        type: string
+        required: true
+    get:
+      summary: getRgwShare
+      description: gets information about a rgw share
+      operationId: getRgwShare
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RGW
+      responses:
+        200:
+          description: returns information about rgw share
+          schema:
+            $ref: '#/definitions/RadosGatewayShare'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    delete:
+      summary: deleteRgwShare      
+      description: deletes rgw share
+      operationId: deleteRgwShare
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RGW
+      responses:
+        200:
+          description: indicates RGW share was deleted
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/rgw/{userName}/quota:
+    x-swagger-router-controller: rgw
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: userName
+        in: path
+        description: rgw username to query or change
+        type: string
+        required: true
+    delete:
+      summary: deleteRgwQuota
+      description: disables quota for rgw share
+      operationId: deleteRgwQuota
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RGW
+      responses:
+        200:
+          description: indicates quota was deleted from rgw share
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    post:
+      summary: setRgwQuota
+      description: enables quota for rgw share
+      operationId: setRgwQuota
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RGW
+      parameters:
+        - name: capacity
+          in: body
+          description: new capacity of share in MB (megabytes)
+          schema:
+            type: integer
+          required: true
+      responses:
+        200:
+          description: indicates quota was successfuly set for rgw share
+        404:
+          $ref: '#/responses/NotFound'
+        400:
+          $ref: '#/responses/BadRequest'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/performance/{reportType}/{resourceType}/{resourceName}:
+    x-swagger-router-controller: performance
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: reportType
+        in: path
+        description: type of requested report
+        type: string
+        required: true
+        enum:
+          - hourly
+          - daily
+          - weekly
+          - monthly
+          - yearly
+      - name: resourceType
+        in: path
+        description: type of resource to query
+        type: string
+        required: true
+        enum:
+          - iscsi
+          - samba
+          - rgw
+          - cluster
+      - name: resourceName
+        in: path
+        description: name of resource to look for
+        type: string
+        required: true
+    get:
+      summary: listPerformancePoints
+      description: gets list of performance points
+      operationId: listPerformancePoints
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Performance
+      parameters:
+        - name: startDate
+          in: query
+          description: start interval of report
+          type: string
+          format: date-time
+          required: true
+        - name: endDate
+          in: query
+          description: end interval of report
+          type: string
+          format: date-time
+          required: true
+      responses:
+        200:
+          description: returns performance points
+          schema:
+            type: object
+            properties:
+              points:
+                type: array
+                items:
+                  $ref: '#/definitions/PerformancePoint'
+        413:
+          $ref: '#/responses/PayloadTooLarge'
+        400:
+          $ref: '#/responses/BadRequest'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
   /cluster/{clusterName}/samba:
     x-swagger-router-controller: samba
     parameters:
@@ -209,6 +752,7 @@ paths:
         type: string
         required: true
     get:
+      summary: listSambaShares
       description: gets list of samba shares defined
       operationId: listSambaShares
       security:
@@ -227,6 +771,384 @@ paths:
           $ref: '#/responses/NotFound'
         500:
           $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/samba/{shareName}:
+    x-swagger-router-controller: samba
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: shareName
+        in: path
+        description: name of samba share
+        type: string
+        required: true
+    post:
+      summary: addSambaShare
+      description: creates a new samba share
+      operationId: addSambaShare
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Samba
+      parameters:
+        - name: share
+          in: body
+          description: information about new samba share to create
+          schema:
+            $ref: '#/definitions/SambaShare'
+          required: true
+      responses:
+        201:
+          description: indicates new samba share was created
+        404:
+          $ref: '#/responses/NotFound'
+        409:
+          $ref: '#/responses/Conflict'
+        500:
+          $ref: '#/responses/InternalServerError'
+    get:
+      summary: getSambaShare
+      description: returns information about a specific samba share
+      operationId: getSambaShare
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Samba
+      responses:
+        200:  
+          description: returns information about a specific samba share
+          schema:
+            $ref: '#/definitions/SambaShare'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    delete:
+      summary: deleteSambaShare
+      description: used for deleting an existing samba share
+      operationId: deleteSambaShare
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Samba
+      responses:
+        200:
+          description: indicates that samba share was deleted successfuly
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/samba/{shareName}/comment:
+    x-swagger-router-controller: samba
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: shareName
+        in: path
+        description: name of samba share
+        type: string
+        required: true
+    patch:
+      summary: updateSambaShareComment
+      description: updates a share comment
+      operationId: updateSambaShareComment
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Samba
+      parameters:
+        - name: comment
+          in: body
+          description: new comment to apply on share
+          schema:
+            type: string
+          required: true
+      responses:
+        200:
+          description: indicates comment on samba share was successfuly updated
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/samba/{shareName}/browsable:
+    x-swagger-router-controller: samba
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: shareName
+        in: path
+        description: name of samba share
+        type: string
+        required: true
+    patch:
+      summary: updateSambaShareBrowsable  
+      description: updates a share browsable attribute
+      operationId: updateSambaShareBrowsable
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Samba
+      parameters:
+        - name: browsable
+          in: body
+          description: new browsable attribute to set on share
+          schema:
+            type: boolean
+          required: true
+      responses:
+        200:
+          description: indicates browsable attribute on samba share was successfuly updated
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/samba/{shareName}/guest:
+    x-swagger-router-controller: samba
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: shareName
+        in: path
+        description: name of samba share
+        type: string
+        required: true
+    patch:
+      summary: updateSambaShareGuestPermission
+      description: updates guest user access on samba share
+      operationId: updateSambaShareGuestPermission
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Samba
+      parameters:
+        - name: permission
+          in: body
+          description: new guest permission to apply
+          schema:
+            $ref: '#/definitions/SambaPermission'
+          required: true
+      responses:
+        200:
+          description: indicates guest access permission was updated on samba share
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/samba/{shareName}/acl:
+    x-swagger-router-controller: samba
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: shareName
+        in: path
+        description: name of samba share
+        type: string
+        required: true
+    post:
+      summary: addSambaShareUser
+      description: create a new user credentials for samba share
+      operationId: addSambaShareUser
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Samba
+      parameters:
+        - name: acl
+          in: body
+          description: new user credentials to create
+          schema:
+            $ref: '#/definitions/SambaAcl'
+          required: true
+      responses:
+        201:
+          description: indicated user credentials was created
+        409:
+          $ref: '#/responses/Conflict'
+        400:
+          $ref: '#/responses/BadRequest'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/samba/{shareName}/acl/{userName}:
+    x-swagger-router-controller: samba
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: shareName
+        in: path
+        description: name of samba share
+        type: string
+        required: true
+      - name: userName
+        in: path
+        description: username to delete or edit
+        type: string
+        required: true
+    delete:
+      summary: deleteSambaShareUser
+      description: deletes a user permission from samba
+      operationId: deleteSambaShareUser
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Samba
+      responses:
+        200:
+          description: indicates user was deleted from share successfuly
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/samba/{shareName}/acl/{userName}/password:
+    x-swagger-router-controller: samba
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: shareName
+        in: path
+        description: name of samba share
+        type: string
+        required: true
+      - name: userName
+        in: path
+        description: username to delete or edit
+        type: string
+        required: true
+    patch:
+      summary: updateSambaShareUserPassword
+      description: updates password for a user in samba
+      operationId: updateSambaShareUserPassword
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Samba
+      parameters:
+        - name: password
+          in: body
+          description: new password to set
+          schema:
+            type: string
+          required: true
+      responses:
+        200:
+          description: indicates password was successfuly changed for user
+        400:
+          $ref: '#/responses/BadRequest'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/samba/{shareName}/acl/{userName}/permission:
+    x-swagger-router-controller: samba
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: shareName
+        in: path
+        description: name of samba share
+        type: string
+        required: true
+      - name: userName
+        in: path
+        description: username to delete or edit
+        type: string
+        required: true
+    patch:
+      summary: updateSambaShareUserPermission
+      description: updates permission for a user in samba share
+      operationId: updateSambaShareUserPermission
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Samba
+      parameters:
+        - name: permission
+          in: body
+          description: new permission to set
+          schema:
+            $ref: '#/definitions/SambaPermission'
+          required: true
+      responses:
+        200:
+          description: indicates permission was successfuly changed for user
+        400:
+          $ref: '#/responses/BadRequest'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/samba/{shareName}/capacity:
+    x-swagger-router-controller: samba
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: shareName
+        in: path
+        description: name of samba share
+        type: string
+        required: true
+    patch:
+      summary: extendSambaShare
+      description: extends size of samba share
+      operationId: extendSambaShare
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Samba
+      parameters:
+        - name: capacity
+          in: body
+          description: size to increase in MB (megabytes)
+          schema:
+            type: integer
+          required: true
+      responses:
+        200:
+          description: indicates capacity was extended successfuly
+        400:
+          $ref: '#/responses/BadRequest'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
   /cluster/{clusterName}/iscsi:
     x-swagger-router-controller: iscsi
     parameters:
@@ -235,7 +1157,35 @@ paths:
         description: name of requested cluster
         type: string
         required: true
+    post:
+      summary: addScsiTarget
+      description: adds a new iscsi target
+      operationId: addScsiTarget
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+      parameters:
+        - name: target
+          in: body
+          description: information about new iscsi target
+          schema:
+            $ref: '#/definitions/IScsiTarget'
+          required: true
+      responses:
+        201:
+          description: indicates new iscsi target was defined
+        404:
+          $ref: '#/responses/NotFound'
+        400:
+          $ref: '#/responses/BadRequest'
+        409:
+          $ref: '#/responses/Conflict'
+        500:
+          $ref: '#/responses/InternalServerError'
     get:
+      summary: listScsiTargets
       description: gets list of iscsi targets defined
       operationId: listScsiTargets
       security:
@@ -263,6 +1213,7 @@ paths:
         type: string
         required: true
     get:
+      summary: listScsiHosts
       description: returns list of host names serving iscsi targets
       operationId: listScsiHosts
       security:
@@ -296,6 +1247,7 @@ paths:
         type: string
         required: true
     get:
+      summary: getScsiHost
       description: returns information a host containing iscsi target
       operationId: getScsiHost
       security:
@@ -313,25 +1265,47 @@ paths:
           $ref: '#/responses/NotFound'
         500:
           $ref: '#/responses/InternalServerError'
-    delete:
-      description: deletes a down or missing iscsi host
-      operationId: deleteScsiHost
+  /cluster/{clusterName}/iscsi/host/{hostName}/auth:
+    x-swagger-router-controller: iscsi
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: hostName
+        in: path
+        description: name of requested host
+        type: string
+        required: true
+    post:
+      summary: updateScsiPortalAuthentication
+      description: updates or sets authentication on discovery of iscsi portal
+      operationId: updateScsiPortalAuthentication
       security:
         - basic: []
       x-required-role: user
       tags:
         - iSCSI
         - Host
+      parameters:
+        - name: auth
+          in: body
+          description: new authentication parameters to set
+          schema:
+            $ref: '#/definitions/IScsiAuthentication'
+          required: true
       responses:
         200:
-          description: indicates requested iscsi host is deleted
+          description: indicates authentication parameters was changed
         404:
           $ref: '#/responses/NotFound'
         500:
           $ref: '#/responses/InternalServerError'
-    patch:
-      description: used only for enabling/disabling discovery auth on portal
-      operationId: updateScsiHost
+    delete:
+      summary: deleteScsiPortalAuthentication
+      description: deletes portal authentication
+      operationId: deleteScsiPortalAuthentication
       security:
         - basic: []
       x-required-role: user
@@ -340,7 +1314,7 @@ paths:
         - Host
       responses:
         200:
-          description: indicates requested iscsi host is updated
+          description: indicates authentication is deleted from portal
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -359,6 +1333,7 @@ paths:
         type: string
         required: true
     get:
+      summary: getScsiTarget
       description: gets information about a specific iscsi target
       operationId: getScsiTarget
       security:
@@ -375,31 +1350,8 @@ paths:
           $ref: '#/responses/NotFound'
         500:
           $ref: '#/responses/InternalServerError'
-    patch:
-      description: updates an existing iscsi target
-      operationId: updateScsiTarget
-      security:
-        - basic: []
-      x-required-role: user
-      tags:
-        - iSCSI
-      parameters:
-        - name: target
-          in: body
-          description: new iscsi target to add
-          schema:
-            $ref: '#/definitions/IScsiTarget'
-          required: true
-      responses:
-        200:
-          description: indicates iscsi target was updated
-        400:
-          $ref: '#/responses/BadRequest'
-        404:
-          $ref: '#/responses/NotFound'
-        500:
-          $ref: '#/responses/InternalServerError'
     delete:
+      summary: deleteScsiTarget
       description: deletes an existing iscsi target
       operationId: deleteScsiTarget
       security:
@@ -409,6 +1361,134 @@ paths:
       responses:
         200:
           description: indicates iscsi target was deleted
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/iscsi/{targetName}/auth:
+    x-swagger-router-controller: iscsi
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: targetName
+        in: path
+        description: name of iscsi target
+        type: string
+        required: true
+    post:
+      summary: setScsiTargetAuthentication    
+      description: set authentication on target
+      operationId: setScsiTargetAuthentication
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+      parameters:
+        - name: auth
+          in: body
+          description: authentication to set
+          required: true
+          schema:
+            $ref: '#/definitions/IScsiAuthentication'
+      responses:
+        200:
+          description: means that authentication is changed successfuly on target
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    delete:
+      summary: deleteScsiTargetAuthentication
+      description: deletes authentication from target
+      operationId: deleteScsiTargetAuthentication
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+      responses:
+        200:
+          description: means that authentication is deleted successfuly from target
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/iscsi/{targetName}/capacity:
+    x-swagger-router-controller: iscsi
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: targetName
+        in: path
+        description: name of iscsi target
+        type: string
+        required: true
+    patch:
+      summary: extendScsiTargetCapacity
+      description: used for extending iscsi capacity
+      operationId: extendScsiTargetCapacity
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+      parameters:
+        - name: capacity
+          in: body
+          description: new capacity in MB (megabytes)
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: means that capacity was successfuly extended
+        400:
+          $ref: '#/responses/BadRequest'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/iscsi/{targetName}/lun:
+    x-swagger-router-controller: iscsi
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: targetName
+        in: path
+        description: name of iscsi target
+        type: string
+        required: true
+    post:
+      summary: addScsiTargetLun
+      description: used for creating another LUN for iscsi target
+      operationId: addScsiTargetLun
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+      parameters:
+        - name: size
+          in: body
+          description: size of LUN in MB (megabytes)
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: means that new LUN was created
+        400:
+          $ref: '#/responses/BadRequest'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -431,6 +1511,10 @@ responses:
       $ref: '#/definitions/SystemError'
   BadRequest:
     description: HTTP error 400 caused when input parameters are in wrong format
+    schema:
+      $ref: '#/definitions/SystemError'
+  PayloadTooLarge:
+    description: HTTP error 413 caused when output generated is too much according to given parameters
     schema:
       $ref: '#/definitions/SystemError'
 definitions:
@@ -651,15 +1735,15 @@ definitions:
           - down
           - deleting
   IScsiHost:
+    type: object
     description: shows information about an iscsi enabled host
-    allOf:
-      - $ref: '#/definitions/Host'
-      - type: object
-        required:
-          - discovery
-        properties:
-          discovery:
-            $ref: '#/definitions/IScsiAuthentication'
+    required:
+      - discovery
+    properties:
+      discovery:
+        $ref: '#/definitions/IScsiAuthentication'
+      host:
+        $ref: '#/definitions/Host'
   SambaPermission:
     type: string
     description: describes permission a user has to a share
@@ -736,6 +1820,10 @@ definitions:
   PerformancePoint:
     type: object
     description: shows performance collected
+    required:
+      - capacity
+      - used
+      - sampled
     properties:
       capacity:
         type: integer
@@ -743,12 +1831,137 @@ definitions:
       used:
         type: integer
         description: usage of entity in MB (megabytes)
-      x:
-        type: date-time
+      sampled:
+        type: string
+        format: date-time
         description: date/time in UTC of sample
-  
+  RadosGatewayShare:
+    type: object
+    description: shows a share defined in RGW
+    required:
+      - userName
+      - fullName
+      - email
+      - used
+    properties:
+      userName:
+        type: string
+        description: username that can access rgw share
+      fullName:
+        type: string
+        description: full name of user
+      email:
+        type: string
+        description: email of user
+      accessKey:
+        type: string
+        description: S3 access key
+      secretKey:
+        type: string
+        description: S3 secret key
+      capacity:
+        type: integer
+        description: capacity quota of user in MB (megabytes)
+      used:
+        type: integer
+        description: usage of quota of user in MB (megabytes)
+  RbdFileSystem:
+    type: string
+    description: shows compatible filesystem used for rbd images
+    default: xfs
+    enum:
+      - bfs
+      - cramfs
+      - ext2
+      - ext3
+      - ext4
+      - ext4dev
+      - fat
+      - minix
+      - msdos
+      - ntfs
+      - vfat
+      - xfs
+  RbdImage:
+    type: object
+    description: describes an rbd image
+    required:
+      - image
+    properties:
+      diskSize:
+        type: integer
+        description: size of disk in MB (megabytes)
+      image:
+        type: string
+        description: rbd image which was mounted
+      diskUsed:
+        type: integer
+        description: used disk space in MB (megabytes)
+      fileSystem:
+        $ref: '#/definitions/RbdFileSystem'
+  RbdMountPoint:
+    description: shows location of rbd mount point
+    type: object
+    required:
+      - location
+      - host
+      - rbdId
+      - device
+    properties:
+      location:
+        type: string
+        description: filesystem mount point
+      host:
+        type: string
+        description: hostname of VM node where rbd image is mounted
+      rbdId:
+        type: integer
+        description: rbd device id
+      device:
+        type: string
+        description: rbd device string
+      readOnly:
+        type: boolean
+        description: 'true if rbd image was mounted only as readonly'
+      image:
+        $ref: '#/definitions/RbdImage'
+  NtpServerStatus:
+    type: object
+    description: shows ntp sync status to a remote ntp server
+    properties:
+      server:
+        type: string
+        description: ntp server hostname
+      type:
+        type: string
+        description: ntp server type
+        enum:
+          - server
+          - peer
+          - local
+      status:
+        type: string
+        description: sync status to ntp server
+        enum:
+          - synced
+          - combined
+          - ignored
+      stratum:
+        type: integer
+        description: stratum of ntp server (it's level)
+  NtpHostStatus:
+    type: object
+    description: shows ntp sync status for a host
+    properties:
+      hostname:
+        type: string
+        description: hostname of node
+      servers:
+        type: array
+        description: lists sync status for specified host
+        items:
+          $ref: '#/definitions/NtpServerStatus'
         
-      
       
       
         
