@@ -10,7 +10,7 @@ class TypeUtils {
       return false;
     }
 
-    const type = {}.toString().call(value);
+    const type = {}.toString.call(value);
     return type === '[object Function]' || type === '[object AsyncFunction]';
   }
 

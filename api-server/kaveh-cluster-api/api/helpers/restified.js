@@ -1,10 +1,8 @@
 "use strict";
 
-/*
 const models = require('../../models');
 const sequelize = models.sequelize;
 const Sequelize = sequelize.Sequelize;
-*/
 const types = require('./types');
 const Task = require('co-task');
 const env = process.env.NODE_ENV || 'development';
@@ -44,12 +42,10 @@ class Restified {
           if (err instanceof except.CustomError) {
             statusCode = err.statusCode;
           }
-          /*
           else if (err instanceof Sequelize.UniqueConstraintError) {
             statusCode = 409;
             message = JSON.stringify(err.errors);
           }
-          */
         }
 
         res.statusCode = statusCode;
@@ -72,25 +68,25 @@ class Restified {
           })();
         };
       }
-      /*
       else {
-        return function (req, res) {
-          let t = null;
+        return async function (req, res) {
+          const t = await sequelize.transaction();
 
-          sequelize.transaction()
-            .then(function (transaction) {
-              t = transaction;
-              return value(t, req, res);
-            }).then(function () {
-            return t.commit();
-          }).catch(function (err) {
-            t.rollback().finally(function () {
-              errorHandler(req, res, err);
-            });
-          });
+          try {
+            await value(t, req, res);
+            await t.commit();
+          }
+          catch (err) {
+            try {
+              await t.rollback();
+            }
+            catch (err2) {
+            }
+
+            errorHandler(req, res, err);
+          }
         }
       }
-      */
     }
     else if (types.isHashObject(value)) {
       return Restified.make(value);
@@ -107,7 +103,7 @@ class Restified {
    */
   static make(obj) {
     if (types.isHashObject(obj)) {
-      return Object.entries()
+      return Object.entries(obj)
         .map(([key, value]) => ({
           [key]: Restified._restifyValue(value)
         })).reduce((prev, cur) => Object.assign(prev, cur), {});
@@ -116,25 +112,27 @@ class Restified {
       return Restified._restifyValue(obj);
     }
   }
+
+  static autocommit(fn) {
+    return async function() {
+      const args = Array.from(arguments);
+      const t = await sequelize.transaction();
+
+      try {
+        await fn.apply(this, [t].concat(args));
+        await t.commit();
+      }
+      catch (err) {
+        try {
+          await t.rollback();
+        }
+        catch (err2) {
+        }
+
+        throw err;
+      }
+    };
+  }
 }
-
-/*
-module.exports.autocommit = function (fn) {
-  return function () {
-    const args = Array.from(arguments);
-    let t = null;
-
-    return sequelize.transaction()
-      .then(function (transaction) {
-        t = transaction;
-        return fn.apply(this, [t].concat(args));
-      }).then(() => t.commit()).catch(err => {
-        return t.rollback().finally(() => {
-          throw err;
-        });
-      });
-  };
-};
-*/
 
 module.exports = Restified;

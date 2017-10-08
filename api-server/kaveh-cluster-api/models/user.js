@@ -6,10 +6,12 @@ module.exports = (sequelize, DataTypes) => {
     password: DataTypes.STRING
   }, {
     classMethods: {
-      associate: function(models) {
-        // associations can be defined here
-      }
     }
   });
+
+  User.associate = function({UserRole}) {
+    User.UserRoles = User.hasMany(UserRole);
+  };
+
   return User;
 };

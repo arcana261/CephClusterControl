@@ -23,6 +23,134 @@ securityDefinitions:
     type: basic
     description: http based authentication
 paths:
+  /me:
+    x-swagger-router-controller: user
+    get:
+      summary: getCurrentUser
+      description: returns information about currently logged on user
+      operationId: getCurrentUser
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Users
+      responses:
+        200:
+          description: returns information about currently logged on user
+          schema:
+            $ref: '#/definitions/User'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /users:
+    x-swagger-router-controller: user
+    get:
+      summary: listUsers
+      description: returns list of users
+      operationId: listUsers
+      security:
+        - basic: []
+      x-required-role: admin
+      tags:
+        - Users
+      responses:
+        200:
+          description: returns list of users
+          schema:
+            type: array
+            items:
+              $ref: '#/definitions/User'
+    post:
+      summary: addUser
+      description: adds a new user
+      operationId: addUser
+      security:
+        - basic: []
+      x-required-role: admin
+      tags:
+        - Users
+      parameters:
+        - name: user
+          in: body
+          description: user information to add
+          schema:
+            $ref: '#/definitions/User'
+          required: true
+      responses:
+        200:
+          description: indicates new user was created
+        400:
+          $ref: '#/responses/BadRequest'
+        409:
+          $ref: '#/responses/Conflict'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /users/{userName}:
+    x-swagger-router-controller: user
+    parameters:
+      - name: userName
+        in: path
+        type: string
+        description: username to manage
+        required: true
+    get:
+      summary: getUser
+      description: returns information about target user
+      operationId: getUser
+      security:
+        - basic: []
+      x-required-role: admin
+      tags:
+        - Users
+      responses:
+        200:
+          description: returns information about requested user
+          schema:
+            $ref: '#/definitions/User'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    delete:
+      summary: deleteUser
+      description: deletes a user
+      operationId: deleteUser
+      security:
+        - basic: []
+      x-required-role: admin
+      tags:
+        - Users
+      responses:
+        200:
+          description: indicates user was deleted
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    patch:
+      summary: updateUser
+      description: updates a user
+      operationId: updateUser
+      security:
+        - basic: []
+      x-required-role: admin
+      parameters:
+        - name: user
+          in: body
+          description: user information to update
+          schema:
+            $ref: '#/definitions/User'
+          required: true
+      tags:
+        - Users
+      responses:
+        200:
+          description: indicates user was updated successfuly
+        404:
+          $ref: '#/responses/NotFound'
+        400:
+          $ref: '#/responses/BadRequest'
+        500:
+          $ref: '#/responses/InternalServerError'
   /cluster:
     x-swagger-router-controller: cluster
     get:
@@ -38,9 +166,12 @@ paths:
         200:
           description: returns list of defined clusters
           schema:
-            type: array
-            items:
-              $ref: '#/definitions/ClusterConfig'
+            type: object
+            properties:
+              result:
+                type: array
+                items:
+                  $ref: '#/definitions/ClusterConfig'
         500:
           $ref: '#/responses/InternalServerError'
     put:
@@ -1550,12 +1681,15 @@ definitions:
     properties:
       host:
         type: string
+        default: '192.168.21.55'
         description: host address of message broker server
       userName:
         type: string
+        default: 'kaveh'
         description: username to use to connect to message broker
       password:
         type: string
+        default: 'K@ve5'
         description: password to use to connect to message broker
       heartbeat:
         type: integer
@@ -1569,6 +1703,7 @@ definitions:
         default: kaveh_cluster_ctrl
       timeout:
         type: integer
+        default: 2000
         description: |
           miliseconds to timeout certain RPC calls to active agent services
           running on cluster nodes.
@@ -1928,6 +2063,11 @@ definitions:
   NtpServerStatus:
     type: object
     description: shows ntp sync status to a remote ntp server
+    required:
+      - server
+      - type
+      - status
+      - stratum
     properties:
       server:
         type: string
@@ -1952,6 +2092,9 @@ definitions:
   NtpHostStatus:
     type: object
     description: shows ntp sync status for a host
+    required:
+      - hostname
+      - servers
     properties:
       hostname:
         type: string
@@ -1961,7 +2104,24 @@ definitions:
         description: lists sync status for specified host
         items:
           $ref: '#/definitions/NtpServerStatus'
-        
+  User:
+    type: object
+    description: depicts a user on the system
+    required:
+      - userName
+      - roles
+    properties:
+      userName:
+        type: string
+        description: username
+      password:
+        type: string
+        description: user password
+      roles:
+        type: array
+        description: lists various roles owned by user
+        items:
+          type: string
       
       
         

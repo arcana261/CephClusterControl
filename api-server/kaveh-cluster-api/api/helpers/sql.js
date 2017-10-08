@@ -1,10 +1,8 @@
 'use strict';
 
 const env = process.env.NODE_ENV || 'development';
-/*
 const config = require('../../config/config.json')[env];
 const dialect = config.dialect;
-*/
 const types = require('./types');
 const Task = require('co-task');
 
@@ -21,9 +19,15 @@ class SqlUtils {
   static async foreignKeyUp(queryInterface, slaveTable, slaveKey, masterTable, masterKey, options) {
     if (dialect === 'postgres') {
       await queryInterface.sequelize.query(
-        `ALTER TABLE "${slaveTable}" ADD CONSTRAINT "${slaveKey.toLowerCase() + '_fkey'}"
+        `ALTER TABLE "${slaveTable}" ADD CONSTRAINT "${slaveKey.toLowerCase()}_fkey"
           FOREIGN KEY("${slaveKey}") REFERENCES "${masterTable}"("${masterKey}") 
           MATCH SIMPLE ON UPDATE CASCADE ON DELETE CASCADE;`, options);
+      return true;
+    }
+    else if (dialect === 'mysql') {
+      await queryInterface.sequelize.query(
+        `ALTER TABLE \`${slaveTable}\` ADD CONSTRAINT \`${slaveKey.toLowerCase()}_fkey\` 
+        FOREIGN KEY(\`${slaveKey}\`) REFERENCES \`${masterTable}\`(\`${masterKey}\`);`, options);
       return true;
     }
 
@@ -42,7 +46,12 @@ class SqlUtils {
   static async foreignKeyDown(queryInterface, slaveTable, slaveKey, masterTable, masterKey, options) {
     if (dialect === 'postgres') {
       await queryInterface.sequelize.query(
-        `ALTER TABLE "${slaveTable}" DROP CONSTRAINT "${slaveKey.toLowerCase() + '_fkey'}";`, options);
+        `ALTER TABLE "${slaveTable}" DROP CONSTRAINT "${slaveKey.toLowerCase()}_fkey";`, options);
+      return true;
+    }
+    else if (dialect === 'mysql') {
+      await queryInterface.sequelize.query(
+        `ALTER TABLE \`${slaveTable}\` DROP CONSTRAINT \`${slaveKey.toLowerCase()}_fkey\`;`, options);
       return true;
     }
 
@@ -66,15 +75,13 @@ class SqlUtils {
           await obj(queryInterface, Sequelize);
         };
       }
-      /*
       else {
-        result[prop] = function (queryInterface, Sequelize) {
-          return queryInterface.sequelize.transaction(transaction => {
-            return value(transaction, queryInterface, Sequelize);
+        return async function (queryInterface, Sequelize) {
+          await queryInterface.sequelize.transaction(async transaction => {
+            await obj(transaction, queryInterface, Sequelize);
           });
         };
       }
-      */
     }
     else if (types.isHashObject(obj)) {
       return Object.entries(obj)
@@ -87,3 +94,5 @@ class SqlUtils {
     }
   }
 }
+
+module.exports = SqlUtils;
