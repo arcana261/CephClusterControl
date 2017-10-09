@@ -16,7 +16,6 @@
     "basic-auth": "^2.0.0",
     "co-task": "^1.0.0",
     "copy": "^0.3.1",
-    "cors": "^2.8.4",
     "exception-formatter": "^1.0.5",
     "express": "^4.16.1",
     "express-winston": "^2.4.0",

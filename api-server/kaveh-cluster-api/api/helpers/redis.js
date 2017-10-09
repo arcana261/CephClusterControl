@@ -1,12 +1,11 @@
 "use strict";
 
-const env = process.env.NODE_ENV || 'development';
-const redisConfig = require('../../config/config.json')[env];
+const config = require('../../config').redis;
 const Redis = require('../../../../lib/utils/Redis');
 const PackageJson = require('../../../../package.json');
 const types = require('./types');
 
-const instance = new Redis(redisConfig);
+const instance = new Redis(config);
 
 class RedisConnection {
   /**

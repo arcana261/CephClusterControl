@@ -5,8 +5,8 @@ const sequelize = models.sequelize;
 const Sequelize = sequelize.Sequelize;
 const types = require('./types');
 const Task = require('co-task');
-const env = process.env.NODE_ENV || 'development';
-const isStackTraceAvailable = env !== 'production';
+const env = require('../../config/env');
+const isStackTraceAvailable = env === 'development';
 const except = require('./except');
 
 class Restified {

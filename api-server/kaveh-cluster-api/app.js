@@ -5,7 +5,7 @@ const app = require('express')();
 module.exports = app; // for testing
 const winston = require('winston');
 const expressWinston = require('express-winston');
-const cors = require('cors');
+const serverConfig = require('./config').server;
 
 /*
 
@@ -41,16 +41,10 @@ SwaggerExpress.create(config, function(err, swaggerExpress) {
     colorize: true
   }));
 
-  app.use(cors({
-    //allowedHeaders: ['Authorization'],
-    //exposedHeaders: ['Authorization'],
-    //origin: '*'
-  }));
-
   // install middleware
   swaggerExpress.register(app);
 
-  const port = process.env.PORT || 3500;
+  const port = process.env.PORT || serverConfig.port || 3500;
   app.listen(port);
 
   console.log('!! API server is up!');
