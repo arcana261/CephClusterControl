@@ -4,6 +4,7 @@
     "password": "1234",
     "database": "kluster",
     "host": "127.0.0.1",
+    "port": 3306,
     "dialect": "mysql",
     "redis": {
       "host": "127.0.0.1",
@@ -12,16 +13,26 @@
   },
   "test": {
     "username": "root",
-    "password": null,
-    "database": "database_test",
+    "password": "1234",
+    "database": "kluster",
     "host": "127.0.0.1",
-    "dialect": "mysql"
+    "port": 3306,
+    "dialect": "mysql",
+    "redis": {
+      "host": "127.0.0.1",
+      "port": 6379
+    }
   },
   "production": {
     "username": "root",
     "password": null,
     "database": "database_production",
     "host": "127.0.0.1",
-    "dialect": "mysql"
+    "port": 3306,
+    "dialect": "mysql",
+    "redis": {
+      "host": "127.0.0.1",
+      "port": 6379
+    }
   }
 }
