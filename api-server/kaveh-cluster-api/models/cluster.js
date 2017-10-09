@@ -11,11 +11,12 @@ module.exports = (sequelize, DataTypes) => {
     brokerTimeout: DataTypes.INTEGER
   }, {
     classMethods: {
-      associate: function(models) {
-        // associations can be defined here
-      }
     }
   });
+
+  Cluster.associate = function({Host}) {
+    Cluster.hasMany(Host);
+  };
 
   return Cluster;
 };

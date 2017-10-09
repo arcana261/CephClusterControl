@@ -17,16 +17,9 @@ module.exports = {
       host: '127.0.0.1',
       port: 6379
     },
-    rpc: {
-      rabbitmq: '127.0.0.1',
-      username: 'guest',
-      password: 'guest',
-      heartbeat: 10,
-      topic: 'kaveh_cluster_ctrl',
-      timeout: 2000
-    },
-    ceph: {
-      id: 'admin'
+    runner: {
+      update_every: 600,
+      timeout: 900
     }
   },
   test: {
@@ -45,16 +38,9 @@ module.exports = {
       host: '127.0.0.1',
       port: 6379
     },
-    rpc: {
-      rabbitmq: '127.0.0.1',
-      username: 'guest',
-      password: 'guest',
-      heartbeat: 10,
-      topic: 'kaveh_cluster_ctrl',
-      timeout: 2000
-    },
-    ceph: {
-      id: 'admin'
+    runner: {
+      update_every: 600,
+      timeout: 900
     }
   },
   production: {
@@ -73,16 +59,9 @@ module.exports = {
       host: '127.0.0.1',
       port: 6379
     },
-    rpc: {
-      rabbitmq: '127.0.0.1',
-      username: 'guest',
-      password: 'guest',
-      heartbeat: 10,
-      topic: 'kaveh_cluster_ctrl',
-      timeout: 2000
-    },
-    ceph: {
-      id: 'admin'
+    runner: {
+      update_every: 600,
+      timeout: 900
     }
   }
 };

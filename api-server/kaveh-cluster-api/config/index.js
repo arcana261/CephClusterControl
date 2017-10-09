@@ -13,36 +13,6 @@ function isInteger(value) {
 }
 
 const yargs = require('yargs')
-  .option('rpc-rabbit-host', {
-    describe: 'rabbitmq hostname',
-    default: parsedConfig.rpc.rabbitmq
-  })
-  .option('rpc-rabbit-username', {
-    describe: 'rabbitmq username',
-    default: parsedConfig.rpc.username
-  })
-  .option('rpc-rabbit-password', {
-    describe: 'rabbitmq password',
-    default: parsedConfig.rpc.password
-  })
-  .option('rpc-heartbeat', {
-    describe: 'heartbeat to keep rabbitmq connection alive',
-    default: parsedConfig.rpc.heartbeat,
-    check: isInteger
-  })
-  .option('rpc-topic', {
-    describe: 'rabbitmq topic name for rpc communication with agents',
-    default: parsedConfig.rpc.topic
-  })
-  .option('rpc-timeout', {
-    describe: 'timeout for rpc calls to worker agents',
-    default: parsedConfig.rpc.timeout,
-    check: isInteger
-  })
-  .option('ceph-id', {
-    describe: 'default ceph client id to use',
-    default: parsedConfig.ceph.id
-  })
   .option('sql-host', {
     describe: 'hostname of sql(mysql/postgresql) database server',
     default: parsedConfig.database.host
@@ -78,6 +48,16 @@ const yargs = require('yargs')
     default: parsedConfig.redis.port,
     check: isInteger
   })
+  .option('runner-update-rate', {
+    describe: 'seconds to update cluster information',
+    default: parsedConfig.runner.update_every,
+    check: isInteger
+  })
+  .option('runner-timeout', {
+    describe: 'seconds to timeout cluster information updating and restarting again',
+    default: parsedConfig.runner.timeout,
+    check: isInteger
+  })
   .option('port', {
     describe: 'port to listen on',
     default: parsedConfig.port,
@@ -88,17 +68,6 @@ const yargs = require('yargs')
 
 /**
  * @type {{
- * rpc: {
- * rabbitmq: string,
- * username: string,
- * password: string,
- * heartbeat: number,
- * topic: string,
- * timeout: number
- * },
- * ceph: {
- * id: string
- * }
  * server: {
  * port: number
  * },
@@ -117,17 +86,6 @@ const yargs = require('yargs')
  * }}
  */
 module.exports = {
-  rpc: {
-    rabbitmq: yargs['rpc-rabbit-host'],
-    username: yargs['rpc-rabbit-username'],
-    password: yargs['rpc-rabbit-password'],
-    heartbeat: parseInt(yargs['rpc-heartbeat']),
-    topic: yargs['rpc-topic'],
-    timeout: parseInt(yargs['rpc-timeout'])
-  },
-  ceph: {
-    id: yargs['ceph-id']
-  },
   server: {
     port: parseInt(yargs['port'])
   },
@@ -142,5 +100,9 @@ module.exports = {
   redis: {
     host: yargs['redis-host'],
     port: parseInt(yargs['redis-port'])
+  },
+  runner: {
+    update_every: parseInt(yargs['runner-update-rate']),
+    timeout: parseInt(yargs['runner-timeout'])
   }
 };
