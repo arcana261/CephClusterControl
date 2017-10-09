@@ -43,36 +43,7 @@ module.exports = {
         });
 
         if (!user) {
-          if (userName === 'admin') {
-            const t = await sequelize.transaction();
-
-            try {
-              user = await User.create({
-                userName: userName,
-                password: await PasswordHash.create(password)
-              }, {transaction: t});
-
-              const adminRole = await UserRole.create({role: 'admin'}, {transaction: t});
-              const userRole = await UserRole.create({role: 'user'}, {transaction: t});
-
-              await user.addUserRole(adminRole, {transaction: t});
-              await user.addUserRole(userRole, {transaction: t});
-
-              await t.commit();
-            }
-            catch (err) {
-              try {
-                await t.rollback();
-              }
-              catch (err2) {
-              }
-
-              throw err;
-            }
-          }
-          else {
-            throw new Error('username/password invalid');
-          }
+          throw new Error('username/password invalid');
         }
 
         if (!(await PasswordHash.verify(user.password, password))) {
@@ -82,7 +53,7 @@ module.exports = {
         req.swagger.auth = {
           userId: user.id,
           userName: userName,
-          roles: (await user.getUserRoles()).map(x => x.role)
+          roles: (await user.getRoles()).map(x => x.name)
         };
 
         if ('x-required-role' in req.swagger.operation) {

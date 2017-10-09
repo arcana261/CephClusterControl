@@ -13,6 +13,10 @@ docker run -td --restart=always --name mariadb -e MYSQL_ROOT_PASSWORD=1234 -p 33
 docker run -td --restart=always --name redis -p 6379:6379 redis:latest
 
 ./sequelize.sh db:create
+./sequelize.sh db:create --url mysql://root:1234@127.0.0.1/kluster
+./sequelize.sh db:drop --url mysql://root:1234@127.0.0.1/kluster
+./api-server/kaveh-cluster-api/sequelize.sh db:migrate --url mysql://root:1234@127.0.0.1/kluster
+
 model:generate --name User --attributes firstName:string,lastName:string,email:string
 migration:generate --name add-unique-index-to-username
 

@@ -9,8 +9,8 @@ module.exports = (sequelize, DataTypes) => {
     }
   });
 
-  User.associate = function({UserRole}) {
-    User.UserRoles = User.hasMany(UserRole);
+  User.associate = function({Role}) {
+    User.belongsToMany(Role, {through: 'UserRole'});
   };
 
   return User;
