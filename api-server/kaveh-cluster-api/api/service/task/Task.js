@@ -89,17 +89,22 @@ class Task {
       this._status = 'running';
       this._startTime = new Date();
       this._finishTime = null;
+      this._error = null;
+      this._hasError = false;
+      this._result = null;
 
       this._promise = new Promise((resolve, reject) => {
+        const self = this;
+
         function errorHandler(err) {
-          this._finishTime = new Date();
+          self._finishTime = new Date();
 
           if (err instanceof OperationCanceledError) {
-            this._status = 'canceled';
+            self._status = 'canceled';
           }
           else {
-            this._status = 'error';
-            this._result = err;
+            self._status = 'error';
+            self._result = err;
           }
 
           resolve();

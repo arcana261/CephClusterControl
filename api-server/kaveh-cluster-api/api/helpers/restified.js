@@ -69,22 +69,26 @@ class Restified {
         };
       }
       else {
-        return async function (req, res) {
-          const t = await sequelize.transaction();
+        return function (req, res) {
+          async function inner() {
+            const t = await sequelize.transaction();
 
-          try {
-            await value(t, req, res);
-            await t.commit();
-          }
-          catch (err) {
             try {
-              await t.rollback();
+              await value(t, req, res);
+              await t.commit();
             }
-            catch (err2) {
-            }
+            catch (err) {
+              try {
+                await t.rollback();
+              }
+              catch (err2) {
+              }
 
-            errorHandler(req, res, err);
+              errorHandler(req, res, err);
+            }
           }
+
+          inner().catch(err => errorHandler(req, res, err));
         }
       }
     }
@@ -114,6 +118,10 @@ class Restified {
   }
 
   static autocommit(fn) {
+    if (types.isGeneratorFunction(fn)) {
+      fn = Task.async(fn);
+    }
+
     return async function() {
       const args = Array.from(arguments);
       const t = await sequelize.transaction();

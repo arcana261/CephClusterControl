@@ -24,6 +24,8 @@ class ClusterUpdateService {
     if (!(clusterName in tasks)) {
       tasks[clusterName]  = new Task(async cancelationPoint => {
         const runner = new ClusterUpdater(clusterName, cancelationPoint);
+
+        logger.info(`task for cluster "${clusterName}" started`);
         return await runner.run();
       });
     }
@@ -31,12 +33,32 @@ class ClusterUpdateService {
     const task = tasks[clusterName];
 
     try {
-      await task.cancel();
-      task.run();
+      logger.info(`starting update task for cluster "${clusterName}"`);
+
+      if (task.isRunning) {
+        try {
+          await task.cancel();
+        }
+        catch (err) {
+          logger.error(ErrorFormatter.format(err));
+        }
+      }
+
+      task.run().catch(err => {
+        logger.error(ErrorFormatter.format(err));
+      });
     }
     catch (err) {
       logger.error(ErrorFormatter.format(err));
     }
+  }
+
+  /**
+   * @param {string} clusterName
+   * @returns {Promise.<void>}
+   */
+  static restartTask(clusterName) {
+    return ClusterUpdateService.startTask(clusterName);
   }
 
   /**
@@ -48,6 +70,7 @@ class ClusterUpdateService {
       const task = tasks[clusterName];
 
       try {
+        logger.info(`stopping task for cluster "${clusterName}"`);
         await task.cancel();
       }
       catch (err) {
@@ -55,9 +78,15 @@ class ClusterUpdateService {
       }
 
       delete tasks[clusterName];
+
+      logger.info(`task for cluster "${clusterName}" stopped`);
     }
   }
 
+  /**
+   * @returns {Promise.<void>}
+   * @private
+   */
   static async _checkTasks() {
     const clusterNames = (await Cluster.findAll()).map(x => x.name);
 
@@ -67,14 +96,44 @@ class ClusterUpdateService {
       }
       else {
         const task = tasks[clusterName];
-        if (!task.isRunning) {
 
+        if (!task.isRunning) {
+          const finish = task.finishTime !== null ? task.finishTime : task.startTime;
+          const diff = (new Date()).getTime() - (finish !== null ? finish.getTime() : 0);
+
+          if (diff >= config.runner.update_every * 1000) {
+            await ClusterUpdateService.startTask(clusterName);
+          }
+        }
+        else {
+          const diff = (new Date()).getTime() - (task.startTime !== null ? task.startTime.getTime() : 0);
+
+          if (diff >= config.runner.timeout * 1000) {
+            logger.warn(`task timeout detected for cluster "${clusterName}"`);
+            task.cancel().catch(err => {
+              ErrorFormatter.format(err);
+            });
+
+            delete tasks[clusterName];
+
+            await ClusterUpdateService.startTask(clusterName);
+          }
         }
       }
     }
   }
 
-  static run() {
+  /**
+   * @returns {Promise.<void>}
+   */
+  static async run() {
+    await ClusterUpdateService._checkTasks();
+
+    setInterval(() => {
+      ClusterUpdateService._checkTasks().catch(err => {
+        logger.error(ErrorFormatter.format(err));
+      });
+    }, 10000);
   }
 }
 

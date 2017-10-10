@@ -26,7 +26,8 @@ class SqlUtils {
     else if (dialect === 'mysql') {
       await queryInterface.sequelize.query(
         `ALTER TABLE \`${slaveTable}\` ADD CONSTRAINT \`${slaveKey.toLowerCase()}_fkey\` 
-        FOREIGN KEY(\`${slaveKey}\`) REFERENCES \`${masterTable}\`(\`${masterKey}\`);`, options);
+        FOREIGN KEY(\`${slaveKey}\`) REFERENCES \`${masterTable}\`(\`${masterKey}\`)
+        ON UPDATE CASCADE ON DELETE CASCADE;`, options);
       return true;
     }
 

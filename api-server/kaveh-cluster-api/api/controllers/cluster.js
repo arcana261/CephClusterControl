@@ -3,8 +3,14 @@
 const restified = require('../helpers/restified');
 const {Cluster} = require('../../models');
 const except = require('../helpers/except');
+const ClusterUpdateService = require('../service');
 
 module.exports = restified.make({
+  /**
+   * DELETE /cluster/{clusterName}
+   */
+  deleteCluster: deleteCluster,
+
   /**
    * PATCH /cluster/{clusterName}
    */
@@ -38,6 +44,27 @@ function formatCluster(cluster) {
       timeout: cluster.brokerTimeout
     }
   };
+}
+
+async function deleteCluster(t, req, res) {
+  const {
+    clusterName: {value: clusterName}
+  } = req.swagger.params;
+
+  const removed = await Cluster.destroy({
+    where: {
+      name: clusterName
+    },
+    transaction: t
+  });
+
+  if (removed < 1) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found`);
+  }
+
+  await ClusterUpdateService.stopTask(clusterName);
+
+  res.json({});
 }
 
 async function updateCluster(t, req, res) {
@@ -84,8 +111,11 @@ async function updateCluster(t, req, res) {
   }, {
     where: {
       name: clusterName
-    }
+    },
+    transaction: t
   });
+
+  await ClusterUpdateService.restartTask(clusterName);
 
   res.json({});
 }
@@ -138,6 +168,8 @@ async function addCluster(req, res) {
     brokerTopic: brokerTopic,
     brokerTimeout: brokerTimeout
   });
+
+  await ClusterUpdateService.startTask(name);
 
   res.json({});
 }

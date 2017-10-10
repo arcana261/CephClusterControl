@@ -2,6 +2,17 @@
 
 const HostStatus = require('../api/const/HostStatus');
 
+/**
+ * @typedef {object} HostModel
+ * @property {string} hostName
+ * @property {string} version
+ * @property {string} ipList
+ * @property {boolean} distro_centos
+ * @property {boolean} distro_ubuntu
+ * @property {string} distro_version
+ * @property {string} status
+ */
+
 module.exports = (sequelize, DataTypes) => {
   const Host = sequelize.define('Host', {
     hostName: DataTypes.STRING,

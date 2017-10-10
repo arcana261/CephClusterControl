@@ -2,7 +2,7 @@
 
 const auth = require('basic-auth');
 const PasswordHash = require('../../../../lib/utils/PasswordHash');
-const {User, UserRole, sequelize} = require('../../models');
+const {User, Role} = require('../../models');
 const types = require('./types');
 const redis = require('./redis');
 
@@ -39,7 +39,10 @@ module.exports = {
         let user = await User.findOne({
           where: {
             userName: userName
-          }
+          },
+          include: [{
+            model: Role
+          }]
         });
 
         if (!user) {
@@ -53,7 +56,7 @@ module.exports = {
         req.swagger.auth = {
           userId: user.id,
           userName: userName,
-          roles: (await user.getRoles()).map(x => x.name)
+          roles: user.Roles.map(x => x.name)
         };
 
         if ('x-required-role' in req.swagger.operation) {

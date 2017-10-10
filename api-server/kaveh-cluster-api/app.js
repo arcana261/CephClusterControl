@@ -6,6 +6,9 @@ module.exports = app; // for testing
 const winston = require('winston');
 const expressWinston = require('express-winston');
 const serverConfig = require('./config').server;
+const ClusterUpdateService = require('./api/service');
+const ErrorFormatter = require('../../lib/utils/ErrorFormatter');
+const logger = require('logging').default('Main');
 
 /*
 
@@ -22,43 +25,53 @@ migration:generate --name add-unique-index-to-username
 
 */
 
-const config = {
-  appRoot: __dirname, // required config
-  api: true,
-  swaggerSecurityHandlers: require('./api/helpers/securityHandlers')
-};
+async function main() {
+  await ClusterUpdateService.run();
 
-SwaggerExpress.create(config, function(err, swaggerExpress) {
-  if (err) {
-    throw err;
-  }
+  const config = {
+    appRoot: __dirname, // required config
+    api: true,
+    swaggerSecurityHandlers: require('./api/helpers/securityHandlers')
+  };
 
-  app.use(expressWinston.logger({
-    transports: [
-      new winston.transports.Console({
-        json: false,
-        colorize: true
-      })
-    ],
-    meta: false,
-    expressFormat: true,
-    colorize: true
-  }));
+  SwaggerExpress.create(config, function (err, swaggerExpress) {
+    if (err) {
+      logger.error(ErrorFormatter.format(err));
+      process.exit(-1);
+    }
 
-  // install middleware
-  swaggerExpress.register(app);
+    app.use(expressWinston.logger({
+      transports: [
+        new winston.transports.Console({
+          json: false,
+          colorize: true
+        })
+      ],
+      meta: false,
+      expressFormat: true,
+      colorize: true
+    }));
 
-  const port = process.env.PORT || serverConfig.port || 3500;
-  app.listen(port);
+    // install middleware
+    swaggerExpress.register(app);
 
-  console.log('!! API server is up!');
-  console.log('!! to view swagger schema definition, simply open');
-  console.log('!! \'http://127.0.0.1:' + port + '/swagger\' in your browser');
-  console.log('!! enjoy!');
-  console.log();
-  console.log();
+    const port = process.env.PORT || serverConfig.port || 3500;
+    app.listen(port);
 
-  if (swaggerExpress.runner.swagger.paths['/hello']) {
-    console.log('try this:\ncurl http://127.0.0.1:' + port + '/hello?name=Scott');
-  }
+    console.log('!! API server is up!');
+    console.log('!! to view swagger schema definition, simply open');
+    console.log('!! \'http://127.0.0.1:' + port + '/swagger\' in your browser');
+    console.log('!! enjoy!');
+    console.log();
+    console.log();
+
+    if (swaggerExpress.runner.swagger.paths['/hello']) {
+      console.log('try this:\ncurl http://127.0.0.1:' + port + '/hello?name=Scott');
+    }
+  });
+}
+
+main().then(() => { }).catch(err => {
+  logger.error(ErrorFormatter.format(err));
+  process.exit(-1);
 });

@@ -31,7 +31,7 @@ const yargs = require('yargs')
     check: isInteger
   })
   .option('sql-dialect', {
-    describe: 'type of database server, currently only mysql and postgresql are supported',
+    describe: 'type of database server, currently only "mysql" and "postgres" are supported',
     default: parsedConfig.database.dialect,
     choices: ['mysql', 'postgresql']
   })
