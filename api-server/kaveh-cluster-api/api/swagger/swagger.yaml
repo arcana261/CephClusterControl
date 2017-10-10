@@ -2045,6 +2045,12 @@ definitions:
         description: used disk space in MB (megabytes)
       fileSystem:
         $ref: '#/definitions/RbdFileSystem'
+      status:
+        type: string
+        description: whether image is healthy or not
+        enum:
+          - up
+          - missing
   RbdMountPoint:
     description: shows location of rbd mount point
     type: object

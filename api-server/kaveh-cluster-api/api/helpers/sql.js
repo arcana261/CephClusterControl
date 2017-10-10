@@ -25,7 +25,7 @@ class SqlUtils {
     }
     else if (dialect === 'mysql') {
       await queryInterface.sequelize.query(
-        `ALTER TABLE \`${slaveTable}\` ADD CONSTRAINT \`${slaveKey.toLowerCase()}_fkey\` 
+        `ALTER TABLE \`${slaveTable}\` ADD CONSTRAINT \`${slaveTable.toLowerCase()}_${slaveKey.toLowerCase()}_fkey\` 
         FOREIGN KEY(\`${slaveKey}\`) REFERENCES \`${masterTable}\`(\`${masterKey}\`)
         ON UPDATE CASCADE ON DELETE CASCADE;`, options);
       return true;
@@ -51,7 +51,7 @@ class SqlUtils {
     }
     else if (dialect === 'mysql') {
       await queryInterface.sequelize.query(
-        `ALTER TABLE \`${slaveTable}\` DROP CONSTRAINT \`${slaveKey.toLowerCase()}_fkey\`;`, options);
+        `ALTER TABLE \`${slaveTable}\` DROP CONSTRAINT \`${slaveTable.toLowerCase()}_${slaveKey.toLowerCase()}_fkey\`;`, options);
       return true;
     }
 

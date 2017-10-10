@@ -25,8 +25,9 @@ module.exports = (sequelize, DataTypes) => {
     }
   });
 
-  Cluster.associate = function({Host}) {
+  Cluster.associate = function({Host, RbdImage}) {
     Cluster.hasMany(Host);
+    Cluster.hasMany(RbdImage);
   };
 
   return Cluster;

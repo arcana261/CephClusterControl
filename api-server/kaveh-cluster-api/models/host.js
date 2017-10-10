@@ -32,9 +32,10 @@ module.exports = (sequelize, DataTypes) => {
     }
   });
 
-  Host.associate =  function({Cluster, RpcType}) {
+  Host.associate =  function({Cluster, RpcType, RbdImage}) {
     Host.Cluster = Host.belongsTo(Cluster);
     Host.belongsToMany(RpcType, {through: 'HostRpcType'});
+    Host.hasMany(RbdImage);
   };
 
   return Host;
