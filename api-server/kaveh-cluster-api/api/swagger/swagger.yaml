@@ -291,9 +291,12 @@ paths:
         200:
           description: returns known agents and VMs in system
           schema:
-            type: array
-            items:
-              $ref: '#/definitions/Host'
+            type: object
+            properties:
+              result:
+                type: array
+                items:
+                  $ref: '#/definitions/Host'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -341,6 +344,8 @@ paths:
       responses:
         200:
           description: indictes host is deleted
+          schema:
+            $ref: '#/definitions/EmptyObject'
         404:
           $ref: '#/responses/NotFound'
         500:

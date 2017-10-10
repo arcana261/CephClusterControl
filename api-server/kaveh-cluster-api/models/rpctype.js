@@ -1,5 +1,10 @@
 "use strict";
 
+/**
+ * @typedef {object} RpcType
+ * @property {string} name
+ */
+
 module.exports = (sequelize, DataTypes) => {
   const RpcType = sequelize.define('RpcType', {
     name: DataTypes.STRING
