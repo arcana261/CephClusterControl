@@ -149,18 +149,23 @@ class ClusterUpdater {
    * @private
    */
   async _updateRbdImages(cluster, proxy) {
+    const actualMountPoints = await proxy.rbd.getMapped();
+    this._cancelationPoint.checkExceptionPoint();
+
     const actualImages = await Promise.all((await proxy.rbd.ls({pool: '*'})).map(async name => {
       try {
-        return [name, await proxy.rbd.info({image: name, timeout: -1})];
+        const parsedName = ImageNameParser.parse(name);
+        const mountPoint = actualMountPoints.filter(x => x.image === parsedName.fullName)[0];
+        const targetHost = mountPoint ? mountPoint.hostname : null;
+
+        return [name, await proxy.rbd.info({image: name, timeout: -1, host: targetHost})];
       }
       catch (err) {
         return [name, null];
       }
     }));
+    this._cancelationPoint.checkExceptionPoint();
 
-    this._cancelationPoint.checkExceptionPoint();
-    const actualMountPoints = await proxy.rbd.getMapped();
-    this._cancelationPoint.checkExceptionPoint();
 
     const fn = restified.autocommit(async t => {
       const images = await cluster.getRbdImages({transaction: t});
@@ -187,7 +192,7 @@ class ClusterUpdater {
         let host = await image.getHost();
 
         if (host && !mountPoint) {
-          await image.setHost(null);
+          await image.setHost(null, {transaction: t});
         }
         else if (!host && mountPoint) {
           host = await Host.findOne({

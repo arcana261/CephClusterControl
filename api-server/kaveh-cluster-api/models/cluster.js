@@ -1,5 +1,8 @@
 "use strict";
 
+const ClientLoop = require('../../../lib/rpc/ClientLoop');
+const Proxy = require('../../../lib/proxy');
+
 /**
  * @typedef {object} ClusterModel
  * @property {string} name
@@ -28,6 +31,26 @@ module.exports = (sequelize, DataTypes) => {
   Cluster.associate = function({Host, RbdImage}) {
     Cluster.hasMany(Host);
     Cluster.hasMany(RbdImage);
+  };
+
+  Cluster.prototype.autoclose = function(fn) {
+    const self = this;
+
+    return async function() {
+      const args = Array.from(arguments);
+      const connectionString = `amqp://${self.brokerUserName}:${self.brokerPassword}` +
+        `@${self.brokerHost}?heartbeat=${self.brokerHeartBeat}`;
+      const client = new ClientLoop(connectionString, self.brokerTopic, self.brokerTimeout);
+      await client.start();
+
+      try {
+        const proxy = new Proxy(client);
+        await fn.apply(this, [proxy].concat(args));
+      }
+      finally {
+        await client.stop();
+      }
+    };
   };
 
   return Cluster;

@@ -442,13 +442,18 @@ paths:
           description: optionally list only rbd images in certain rbd pool
           type: string
           required: false
+        - $ref: '#/parameters/listStart'
+        - $ref: '#/parameters/listLength'
       responses:
         200:
           description: returns list of rbd images
           schema:
-            type: array
-            items:
-              $ref: '#/definitions/RbdImage'
+            type: object
+            properties:
+              result:
+                type: array
+                items:
+                  $ref: '#/definitions/RbdImage'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -468,22 +473,35 @@ paths:
           description: optionally list only rbd images in certain rbd pool
           type: string
           required: false
+          default: rbd
         - name: image
           in: body
           description: information about new rbd image to create
           schema:
-            $ref: '#/definitions/RbdImage'
+            type: object
+            properties:
+              image:
+                type: string
+                description: name of new rbd image
+              diskSize:
+                type: integer
+                description: size of new disk in MB (megabytes) to create
+                minimum: 100
+              fileSystem:
+                $ref: '#/definitions/RbdFileSystem'
           required: true
       responses:
         201:
           description: indicates new rbd image was created successfuly
+          schema:
+            $ref: '#/definitions/RbdImage'
         404:
           $ref: '#/responses/NotFound'
         409:
           $ref: '#/responses/Conflict'
         500:
           $ref: '#/responses/InternalServerError'
-  /cluster/{clusterName}/rbd/disk/{imageName}:
+  /cluster/{clusterName}/rbd/disk/{pool}/{imageName}:
     x-swagger-router-controller: rbd
     parameters:
       - name: clusterName
@@ -497,9 +515,10 @@ paths:
         type: string
         required: true
       - name: pool
-        in: query
-        description: optional pool name for rbd image
+        in: path
+        description: pool name for rbd image
         type: string
+        required: true
     get:
       summary: getRbdImage
       description: gets information about rbd image
@@ -530,39 +549,13 @@ paths:
       responses:
         200:
           description: indicates that rbd image was deleted successfuly
-        404:
-          $ref: '#/responses/NotFound'
-        500:
-          $ref: '#/responses/InternalServerError'
-  /cluster/{clusterName}/rbd/mount:
-    x-swagger-router-controller: rbd
-    parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-    get:
-      summary: listRbdMountPoints
-      description: list rbd mount points in whole cluster
-      operationId: listRbdMountPoints
-      security:
-        - basic: []
-      x-required-role: user
-      tags:
-        - RBD
-      responses:
-        200:
-          description: returns list of rbd mount points
           schema:
-            type: array
-            items:
-              $ref: '#/definitions/RbdMountPoint'
+            $ref: '#/definitions/EmptyObject'
         404:
           $ref: '#/responses/NotFound'
         500:
           $ref: '#/responses/InternalServerError'
-  /cluster/{clusterName}/rbd/mount/{imageName}:
+  /cluster/{clusterName}/rbd/disk/{pool}/{imageName}/extend:
     x-swagger-router-controller: rbd
     parameters:
       - name: clusterName
@@ -576,27 +569,60 @@ paths:
         type: string
         required: true
       - name: pool
-        in: query
-        description: optional pool name for rbd image
+        in: path
+        description: pool name for rbd image
         type: string
-    get:
-      summary: getRbdMountPoint
-      description: gets mount point for specified rbd image
-      operationId: getRbdMountPoint
+        required: true
+    post:
+      summary: extendRbdImage
+      description: extends rbd image capacity
+      operationId: extendRbdImage
       security:
         - basic: []
       x-required-role: user
       tags:
         - RBD
+      parameters:
+        - name: extendRequest
+          in: body
+          description: parameters to pass to extend rbd image
+          required: true
+          schema:
+            type: object
+            properties:
+              size:
+                type: integer
+                description: size in MB (megabytes) to extend RBD image
+                minimum: 100
       responses:
         200:
-          description: returns mount point
+          description: indicates rbd image is extended successfuly
           schema:
-            $ref: '#/definitions/RbdMountPoint'
+            $ref: '#/definitions/RbdImage'
+        400:
+          $ref: '#/responses/BadRequest'
         404:
           $ref: '#/responses/NotFound'
         500:
           $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/rbd/mount/{pool}/{imageName}:
+    x-swagger-router-controller: rbd
+    parameters:
+      - name: clusterName
+        in: path
+        description: name of requested cluster
+        type: string
+        required: true
+      - name: imageName
+        in: path
+        description: rbd image to manage
+        type: string
+        required: true
+      - name: pool
+        in: path
+        description: pool name for rbd image
+        type: string
+        required: true
     post:
       summary: mountRbdImage
       description: mount specified image
@@ -607,26 +633,28 @@ paths:
       tags:
         - RBD
       parameters:
-        - name: permanent
-          in: query
-          description: whether rbd image should be mounted permanently (surviving reboot)
-          type: boolean
-          required: false
-        - name: host
-          in: query
-          description: target VM to mount on. it is optional, if not specified one will be picked automatically.
-          type: string
-          required: false
-        - name: readOnly
-          in: query
-          description: can be used to mount image as readonly
-          type: boolean
-          required: false
+        - name: mountRequest
+          in: body
+          description: parameters to request image mount
+          required: true
+          schema:
+            type: object
+            properties:
+              permanent:
+                type: boolean
+                description: whether rbd image should be mounted permanently (surviving reboot)
+              host:
+                type: string
+                description: target VM to mount on. it is optional, if not specified one will be picked automatically.
+                default: ''
+              readOnly:
+                type: boolean
+                description: can be used to mount image as readonly
       responses:
         200:
           description: indicates image was mounted successfuly
           schema:
-            $ref: '#/definitions/RbdMountPoint'
+            $ref: '#/definitions/RbdImage'
         404:
           $ref: '#/responses/NotFound'
         409:
@@ -648,9 +676,16 @@ paths:
           description: optionally unmount rbd image from a specific host
           required: false
           type: string
+        - name: force
+          in: query
+          description: forcefully unmount if necessary
+          required: false
+          type: boolean
       responses:
         200:
           description: indicates rbd image was unmounted successfuly
+          schema:
+            $ref: '#/definitions/RbdImage'
         404:
           $ref: '#/responses/NotFound'
         409:
@@ -1637,7 +1672,26 @@ paths:
           $ref: '#/responses/InternalServerError'
   /swagger:
     x-swagger-pipe: swagger_raw
-# complex objects have schema definitions
+
+parameters:
+  listStart:
+    name: start
+    in: query
+    type: integer
+    description: starting offset to fetch list
+    required: false
+    minimum: 0
+    default: 0
+  listLength:
+    name: length
+    in: query
+    type: integer
+    description: number of items to fetch from list
+    required: true
+    minimum: 0
+    default: 10
+    maximum: 50
+
 responses:
   Conflict:
     description: HTTP error 409 depicting a situation in which something exists already or does not
@@ -2016,6 +2070,7 @@ definitions:
     description: shows compatible filesystem used for rbd images
     default: xfs
     enum:
+      - unknown
       - bfs
       - cramfs
       - ext2
@@ -2028,29 +2083,6 @@ definitions:
       - ntfs
       - vfat
       - xfs
-  RbdImage:
-    type: object
-    description: describes an rbd image
-    required:
-      - image
-    properties:
-      diskSize:
-        type: integer
-        description: size of disk in MB (megabytes)
-      image:
-        type: string
-        description: rbd image which was mounted
-      diskUsed:
-        type: integer
-        description: used disk space in MB (megabytes)
-      fileSystem:
-        $ref: '#/definitions/RbdFileSystem'
-      status:
-        type: string
-        description: whether image is healthy or not
-        enum:
-          - up
-          - missing
   RbdMountPoint:
     description: shows location of rbd mount point
     type: object
@@ -2075,8 +2107,36 @@ definitions:
       readOnly:
         type: boolean
         description: 'true if rbd image was mounted only as readonly'
+  RbdImage:
+    type: object
+    description: describes an rbd image
+    required:
+      - image
+      - status
+    properties:
+      diskSize:
+        type: integer
+        description: size of disk in MB (megabytes)
       image:
-        $ref: '#/definitions/RbdImage'
+        type: string
+        description: rbd image which was mounted
+      diskUsed:
+        type: integer
+        description: used disk space in MB (megabytes)
+      fileSystem:
+        $ref: '#/definitions/RbdFileSystem'
+      status:
+        type: string
+        description: whether image is healthy or not
+        enum:
+          - up
+          - missing
+          - failed
+      isMounted:
+        type: boolean
+        description: whether mountpoint refers to a valid location
+      mountPoint:
+        $ref: '#/definitions/RbdMountPoint'
   NtpServerStatus:
     type: object
     description: shows ntp sync status to a remote ntp server

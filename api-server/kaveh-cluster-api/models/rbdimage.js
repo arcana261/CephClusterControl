@@ -13,6 +13,8 @@ const RbdImageStatus = require('../api/const/RbdImageStatus');
  * @property {string} status
  * @property {string} mountPoint_location
  * @property {number} mountPoint_rbdId
+ * @property {string} mountPoint_device
+ * @property {boolean} mountPoint_readOnly
  */
 
 module.exports = (sequelize, DataTypes) => {

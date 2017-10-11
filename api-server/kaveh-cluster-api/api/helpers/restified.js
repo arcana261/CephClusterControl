@@ -47,6 +47,9 @@ class Restified {
             message = JSON.stringify(err.errors);
           }
         }
+        else if (types.isString(err)) {
+          message = err;
+        }
 
         res.statusCode = statusCode;
         res.json({
