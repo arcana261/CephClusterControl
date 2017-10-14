@@ -60,7 +60,17 @@ const yargs = require('yargs')
   })
   .option('port', {
     describe: 'port to listen on',
-    default: parsedConfig.port,
+    default: parsedConfig.server.port,
+    check: isInteger
+  })
+  .option('retry', {
+    describe: 'how many times RPC should be retried before giving up with an error',
+    default: parsedConfig.server.retry,
+    check: isInteger
+  })
+  .option('retry-wait', {
+    describe: 'amount of time in ms (milliseconds) to wait before each retry of RPC operations',
+    default: parsedConfig.server.retry_wait,
     check: isInteger
   })
   .help()
@@ -69,7 +79,9 @@ const yargs = require('yargs')
 /**
  * @type {{
  * server: {
- * port: number
+ * port: number,
+ * retry: number,
+ * retry_wait: number
  * },
  * database: {
  * host: string,
@@ -87,7 +99,9 @@ const yargs = require('yargs')
  */
 module.exports = {
   server: {
-    port: parseInt(yargs['port'])
+    port: parseInt(yargs['port']),
+    retry: parseInt(yargs['retry']),
+    retry_wait: parseInt(yargs['retry-wait'])
   },
   database: {
     host: yargs['sql-host'],

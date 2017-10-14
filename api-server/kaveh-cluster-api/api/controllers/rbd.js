@@ -6,6 +6,10 @@ const except = require('../helpers/except');
 const ImageNameParser = require('../../../../lib/utils/ImageNameParser');
 const RbdImageStatus = require('../const/RbdImageStatus');
 const types = require('../helpers/types');
+const logger = require('logging').default('RbdController');
+const ErrorFormatter = require('../../../../lib/utils/ErrorFormatter');
+const Retry = require('../../../../lib/utils/Retry');
+const config = require('../../config');
 
 module.exports = restified.make({
   /**
@@ -94,47 +98,67 @@ async function extendRbdImage(req, res) {
     throw new except.NotFoundError(`cluster not found: "${clusterName}"`);
   }
 
-  const fn = cluster.autoclose(async proxy => {
-    const name = ImageNameParser.parse(imageName, pool);
-    const mountPoint = (await proxy.rbd.getMapped())
-      .filter(x => x.image === name.fullName)[0];
-
-    await proxy.rbd.extend({image: imageName, pool: pool, size: size});
-    const info = await proxy.rbd.info({image: imageName, pool: pool, host: mountPoint ? mountPoint.hostname : null});
-
-    const gn = restified.autocommit(async t => {
-      const image = await RbdImage.findOne({
-        where: {
-          image: imageName,
-          pool: pool
-        },
-        include: [{
-          model: Cluster,
-          where: {
-            name: clusterName
-          }
-        }],
-        transaction: t
-      });
-
-      if (!image) {
-        throw new except.NotFoundError(`image "${pool}/${imageName}" not found in cluster "${clusterName}"`);
-      }
-
-      Object.assign(image, {
-        capacity: info.diskSize || image.capacity,
-        used: info.diskUsed || image.used
-      });
-
-      await image.save({transaction: t});
-
-      res.json(await formatRbdImage(t, image));
+  const preconditionChecker = restified.autocommit(async t => {
+    const [image] = await cluster.getRbdImages({
+      where: {
+        pool: pool,
+        image: imageName
+      },
+      offset: 0,
+      limit: 1,
+      transaction: t
     });
 
-    await gn();
+    if (!image) {
+      throw new except.NotFoundError(`image "${pool}/${imageName}" not found in cluster "${clusterName}"`);
+    }
   });
 
-  await fn();
+  await preconditionChecker();
+
+  await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      const name = ImageNameParser.parse(imageName, pool);
+      const mountPoint = (await proxy.rbd.getMapped())
+        .filter(x => x.image === name.fullName)[0];
+
+      await proxy.rbd.extend({image: imageName, pool: pool, size: size});
+      const info = await proxy.rbd.info({image: imageName, pool: pool, host: mountPoint ? mountPoint.hostname : null});
+
+      const gn = restified.autocommit(async t => {
+        const image = await RbdImage.findOne({
+          where: {
+            image: imageName,
+            pool: pool
+          },
+          include: [{
+            model: Cluster,
+            where: {
+              name: clusterName
+            }
+          }],
+          transaction: t
+        });
+
+        if (!image) {
+          throw new except.NotFoundError(`image "${pool}/${imageName}" not found in cluster "${clusterName}"`);
+        }
+
+        Object.assign(image, {
+          capacity: Math.round(info.diskSize || image.capacity),
+          used: Math.round(info.diskUsed || image.used)
+        });
+
+        await image.save({transaction: t});
+
+        res.json(await formatRbdImage(t, image));
+      });
+
+      await gn();
+    });
+
+    await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
 }
 
 async function umountRbdImage(req, res) {
@@ -156,46 +180,66 @@ async function umountRbdImage(req, res) {
     throw new except.NotFoundError(`cluster not found: "${clusterName}"`);
   }
 
-  const fn = cluster.autoclose(async proxy => {
-    await proxy.rbd.umount({image: imageName, pool: pool, host: host, force: force});
-
-    const gn = restified.autocommit(async t => {
-      const image = await RbdImage.findOne({
-        where: {
-          pool: pool,
-          image: imageName
-        },
-        include: [{
-          model: Cluster,
-          where: {
-            name: clusterName
-          }
-        }],
-        transaction: t
-      });
-
-      if (!image) {
-        throw new except.NotFoundError(`image "${pool}/${imageName}" not found in cluster "${clusterName}"`);
-      }
-
-      Object.assign(image, {
-        isMounted: false,
-        mountPoint_location: null,
-        mountPoint_rbdId: null,
-        mountPoint_device: null,
-        mountPoint_readOnly: null
-      });
-
-      await image.save({transaction: t});
-      await image.setHost(null, {transaction: t});
-
-      res.json(await formatRbdImage(t, image));
+  const preconditionChecker = restified.autocommit(async t => {
+    const [image] = await cluster.getRbdImages({
+      where: {
+        pool: pool,
+        image: imageName
+      },
+      offset: 0,
+      limit: 1,
+      transaction: t
     });
 
-    await gn();
+    if (!image) {
+      throw new except.NotFoundError(`image "${pool}/${imageName}" not found in cluster "${clusterName}"`);
+    }
   });
 
-  await fn();
+  await preconditionChecker();
+
+  await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      await proxy.rbd.umount({image: imageName, pool: pool, host: host, force: force});
+
+      const gn = restified.autocommit(async t => {
+        const image = await RbdImage.findOne({
+          where: {
+            pool: pool,
+            image: imageName
+          },
+          include: [{
+            model: Cluster,
+            where: {
+              name: clusterName
+            }
+          }],
+          transaction: t
+        });
+
+        if (!image) {
+          throw new except.NotFoundError(`image "${pool}/${imageName}" not found in cluster "${clusterName}"`);
+        }
+
+        Object.assign(image, {
+          isMounted: false,
+          mountPoint_location: null,
+          mountPoint_rbdId: null,
+          mountPoint_device: null,
+          mountPoint_readOnly: null
+        });
+
+        await image.save({transaction: t});
+        await image.setHost(null, {transaction: t});
+
+        res.json(await formatRbdImage(t, image));
+      });
+
+      await gn();
+    });
+
+    await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
 }
 
 async function mountRbdImage(req, res) {
@@ -220,64 +264,84 @@ async function mountRbdImage(req, res) {
     throw new except.NotFoundError(`cluster not found: "${clusterName}"`);
   }
 
-  const fn = cluster.autoclose(async proxy => {
-    await proxy.rbd.mount({image: imageName, pool: pool, host: host, readonly: readOnly, permanent: permanent});
-    const name = ImageNameParser.parse(imageName, pool);
+  const preconditionChecker = restified.autocommit(async t => {
+    const [image] = await cluster.getRbdImages({
+      where: {
+        pool: pool,
+        image: imageName
+      },
+      offset: 0,
+      limit: 1,
+      transaction: t
+    });
 
-    const [mountPoint] = (await proxy.rbd.getMapped())
-      .filter(x => x.image === name.fullName);
+    if (!image) {
+      throw new except.NotFoundError(`image "${pool}/${imageName}" not found in cluster "${clusterName}"`);
+    }
+  });
 
-    const gn = restified.autocommit(async t => {
-      const [image] = await cluster.getRbdImages({
-        where: {
-          image: imageName,
-          pool: pool
-        },
-        limit: 1,
-        offset: 0,
-        transaction: t
-      });
+  await preconditionChecker();
 
-      if (!image) {
-        throw new except.NotFoundError(`image "${pool}/${imageName}" not found in cluster "${clusterName}"`);
-      }
+  await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      await proxy.rbd.mount({image: imageName, pool: pool, host: host, readonly: readOnly, permanent: permanent});
+      const name = ImageNameParser.parse(imageName, pool);
 
-      if (mountPoint) {
-        Object.assign(image, {
-          isMounted: true,
-          mountPoint_location: mountPoint.mountPoint,
-          mountPoint_rbdId: mountPoint.rbdId,
-          mountPoint_device: mountPoint.device,
-          mountPoint_readOnly: mountPoint.readOnly
-        });
+      const [mountPoint] = (await proxy.rbd.getMapped())
+        .filter(x => x.image === name.fullName);
 
-        await image.save({transaction: t});
-
-        const hostInstance = await Host.findOne({
+      const gn = restified.autocommit(async t => {
+        const [image] = await cluster.getRbdImages({
           where: {
-            hostName: mountPoint.hostname
+            image: imageName,
+            pool: pool
           },
-          include: [{
-            model: Cluster,
-            where: {
-              name: clusterName
-            }
-          }],
+          limit: 1,
+          offset: 0,
           transaction: t
         });
 
-        if (hostInstance) {
-          await image.setHost(hostInstance, {transaction: t});
+        if (!image) {
+          throw new except.NotFoundError(`image "${pool}/${imageName}" not found in cluster "${clusterName}"`);
         }
-      }
 
-      res.json(await formatRbdImage(t, image));
+        if (mountPoint) {
+          Object.assign(image, {
+            isMounted: true,
+            mountPoint_location: mountPoint.mountPoint,
+            mountPoint_rbdId: mountPoint.rbdId,
+            mountPoint_device: mountPoint.device,
+            mountPoint_readOnly: mountPoint.readOnly
+          });
+
+          await image.save({transaction: t});
+
+          const hostInstance = await Host.findOne({
+            where: {
+              hostName: mountPoint.hostname
+            },
+            include: [{
+              model: Cluster,
+              where: {
+                name: clusterName
+              }
+            }],
+            transaction: t
+          });
+
+          if (hostInstance) {
+            await image.setHost(hostInstance, {transaction: t});
+          }
+        }
+
+        res.json(await formatRbdImage(t, image));
+      });
+
+      await gn();
     });
 
-    await gn();
-  });
-
-  await fn();
+    await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
 }
 
 async function deleteRbdImage(req, res) {
@@ -297,42 +361,65 @@ async function deleteRbdImage(req, res) {
     throw new except.NotFoundError(`cluster not found: "${clusterName}"`);
   }
 
-  const fn = cluster.autoclose(async proxy => {
-    try {
-      await proxy.rbd.umount({image: imageName, pool: pool});
-      await proxy.rbd.rm({image: imageName, pool: pool});
-    }
-    catch (err) {
-      if (!types.isString(err) || err.indexOf('No such file or directory') < 0) {
-        throw err;
-      }
-    }
-
-    const gn = restified.autocommit(async t => {
-
-      const [image] = await cluster.getRbdImages({
-        where: {
-          pool: pool,
-          image: imageName
-        },
-        offset: 0,
-        limit: 1,
-        transaction: t
-      });
-
-      if (!image) {
-        throw new except.NotFoundError(`image "${pool}/${imageName}" not found in cluster "${clusterName}"`);
-      }
-
-      await image.destroy({transaction: t});
-
-      res.json({});
+  const preconditionChecker = restified.autocommit(async t => {
+    const [image] = await cluster.getRbdImages({
+      where: {
+        pool: pool,
+        image: imageName
+      },
+      offset: 0,
+      limit: 1,
+      transaction: t
     });
 
-    await gn();
+    if (!image) {
+      throw new except.NotFoundError(`image "${pool}/${imageName}" not found in cluster "${clusterName}"`);
+    }
   });
 
-  await fn();
+  await preconditionChecker();
+
+  await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      try {
+        await proxy.rbd.umount({image: imageName, pool: pool});
+        await proxy.rbd.rm({image: imageName, pool: pool});
+      }
+      catch (err) {
+        if (!types.isString(err) || err.indexOf('No such file or directory') < 0) {
+          throw err;
+        }
+        else {
+          logger.warn(ErrorFormatter.format(err));
+        }
+      }
+
+      const gn = restified.autocommit(async t => {
+
+        const [image] = await cluster.getRbdImages({
+          where: {
+            pool: pool,
+            image: imageName
+          },
+          offset: 0,
+          limit: 1,
+          transaction: t
+        });
+
+        if (!image) {
+          throw new except.NotFoundError(`image "${pool}/${imageName}" not found in cluster "${clusterName}"`);
+        }
+
+        await image.destroy({transaction: t});
+
+        res.json({});
+      });
+
+      await gn();
+    });
+
+    await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
 }
 
 async function createRbdImage(req, res) {
@@ -356,53 +443,73 @@ async function createRbdImage(req, res) {
     throw new except.NotFoundError(`cluster not found: "${clusterName}"`);
   }
 
-  const fn = cluster.autoclose(async proxy => {
-    try {
-      await proxy.rbd.create({image: image, pool: pool, size: diskSize, format: fileSystem});
-    }
-    catch (err) {
-      if (types.isString(err) && err.indexOf('File exists') >= 0) {
-        throw new except.ConflictError(`rbd image "${pool}/${image}" already exists in cluster "${clusterName}"`);
-      }
-      else {
-        throw err;
-      }
-    }
-
-    let info = null;
-
-    try {
-      info = await proxy.rbd.info({image: image, pool: pool});
-    }
-    catch (err) {
-    }
-
-    const parsedName = ImageNameParser.parse(info.image);
-
-    const gn = restified.autocommit(async t => {
-      const rbdImage = await RbdImage.create({
-        pool: parsedName.pool,
-        image: parsedName.image,
-        capacity: info ? info.diskSize || 0 : null,
-        used: info ? info.diskUsed || 0 : null,
-        fileSystem: info ? info.fileSystem : null,
-        isMounted: false,
-        status: info ? RbdImageStatus.up : RbdImageStatus.failed,
-        mountPoint_location: null,
-        mountPoint_rbdId: null,
-        mountPoint_device: null,
-        mountPoint_readOnly: null
-      }, {transaction: t});
-
-      await rbdImage.setCluster(cluster, {transaction: t});
-
-      res.json(await formatRbdImage(t, rbdImage));
+  const preconditionChecker = restified.autocommit(async t => {
+    const [image] = cluster.getRbdImages({
+      where: {
+        pool: pool,
+        image: image
+      },
+      transaction: t,
+      limit: 1,
+      offset: 0
     });
 
-    await gn();
+    if (image) {
+      throw new except.ConflictError(`rbd image "${pool}/${image}" already exists in cluster "${clusterName}"`);
+    }
   });
 
-  await fn();
+  await preconditionChecker();
+
+  await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      try {
+        await proxy.rbd.create({image: image, pool: pool, size: diskSize, format: fileSystem});
+      }
+      catch (err) {
+        if (types.isString(err) && err.indexOf('File exists') >= 0) {
+          throw new except.ConflictError(`rbd image "${pool}/${image}" already exists in cluster "${clusterName}"`);
+        }
+        else {
+          throw err;
+        }
+      }
+
+      let info = null;
+
+      try {
+        info = await proxy.rbd.info({image: image, pool: pool});
+      }
+      catch (err) {
+      }
+
+      const parsedName = ImageNameParser.parse(info.image);
+
+      const gn = restified.autocommit(async t => {
+        const rbdImage = await RbdImage.create({
+          pool: parsedName.pool,
+          image: parsedName.image,
+          capacity: info ? info.diskSize || 0 : null,
+          used: info ? info.diskUsed || 0 : null,
+          fileSystem: info ? info.fileSystem : null,
+          isMounted: false,
+          status: info ? RbdImageStatus.up : RbdImageStatus.failed,
+          mountPoint_location: null,
+          mountPoint_rbdId: null,
+          mountPoint_device: null,
+          mountPoint_readOnly: null
+        }, {transaction: t});
+
+        await rbdImage.setCluster(cluster, {transaction: t});
+
+        res.json(await formatRbdImage(t, rbdImage));
+      });
+
+      await gn();
+    });
+
+    await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
 }
 
 async function getRbdImage(t, req, res) {

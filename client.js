@@ -1070,7 +1070,7 @@ async function main() {
         }
 
         if (argv.hidden !== null) {
-          share.hidden = !argv.hidden;
+          share.browsable = !argv.hidden;
         }
 
         await proxy.samba.update(share);

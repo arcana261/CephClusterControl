@@ -3,7 +3,9 @@
 module.exports = {
   development: {
     server: {
-      port: 3500
+      port: 3500,
+      retry: 6,
+      retry_wait: 10000
     },
     database: {
       username: 'root',
@@ -24,7 +26,9 @@ module.exports = {
   },
   test: {
     server: {
-      port: 3500
+      port: 3500,
+      retry: 6,
+      retry_wait: 10000
     },
     database: {
       username: 'root',
@@ -45,7 +49,9 @@ module.exports = {
   },
   production: {
     server: {
-      port: 3500
+      port: 3500,
+      retry: 6,
+      retry_wait: 10000
     },
     database: {
       username: 'root',

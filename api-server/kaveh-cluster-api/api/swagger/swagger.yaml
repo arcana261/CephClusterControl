@@ -191,7 +191,7 @@ paths:
             $ref: '#/definitions/ClusterConfig'
           required: true
       responses:
-        201:
+        200:
           description: indicates new cluster is created
           schema:
             $ref: '#/definitions/EmptyObject'
@@ -204,11 +204,7 @@ paths:
   /cluster/{clusterName}:
     x-swagger-router-controller: cluster
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
     get:
       summary: getCluster
       description: returns information about a specific cluster
@@ -273,11 +269,7 @@ paths:
   /cluster/{clusterName}/host:
     x-swagger-router-controller: host
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
     get:
       summary: listClusterHosts
       description: gets list of hosts and their status
@@ -304,11 +296,7 @@ paths:
   /cluster/{clusterName}/host/{hostName}:
     x-swagger-router-controller: host
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
       - name: hostName
         in: path
         description: name of requested host
@@ -353,11 +341,7 @@ paths:
   /cluster/{clusterName}/ntp/tick:
     x-swagger-router-controller: ntp
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
     get:
       summary: getNtpTick
       description: gets approximate time difference between nodes
@@ -388,11 +372,7 @@ paths:
   /cluster/{clusterName}/ntp/servers:
     x-swagger-router-controller: ntp
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
     get:
       summary: getNtpServers
       description: gets ntp sync status for nodes
@@ -422,11 +402,7 @@ paths:
   /cluster/{clusterName}/rbd:
     x-swagger-router-controller: rbd
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
     get:
       summary: listRbdImages
       description: list rbd images in system
@@ -491,7 +467,7 @@ paths:
                 $ref: '#/definitions/RbdFileSystem'
           required: true
       responses:
-        201:
+        200:
           description: indicates new rbd image was created successfuly
           schema:
             $ref: '#/definitions/RbdImage'
@@ -504,21 +480,9 @@ paths:
   /cluster/{clusterName}/rbd/disk/{pool}/{imageName}:
     x-swagger-router-controller: rbd
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: imageName
-        in: path
-        description: rbd image to manage
-        type: string
-        required: true
-      - name: pool
-        in: path
-        description: pool name for rbd image
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/imageName'
+      - $ref: '#/parameters/pool'
     get:
       summary: getRbdImage
       description: gets information about rbd image
@@ -558,21 +522,9 @@ paths:
   /cluster/{clusterName}/rbd/disk/{pool}/{imageName}/extend:
     x-swagger-router-controller: rbd
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: imageName
-        in: path
-        description: rbd image to manage
-        type: string
-        required: true
-      - name: pool
-        in: path
-        description: pool name for rbd image
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/imageName'
+      - $ref: '#/parameters/pool'
     post:
       summary: extendRbdImage
       description: extends rbd image capacity
@@ -608,21 +560,9 @@ paths:
   /cluster/{clusterName}/rbd/mount/{pool}/{imageName}:
     x-swagger-router-controller: rbd
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: imageName
-        in: path
-        description: rbd image to manage
-        type: string
-        required: true
-      - name: pool
-        in: path
-        description: pool name for rbd image
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/imageName'
+      - $ref: '#/parameters/pool'
     post:
       summary: mountRbdImage
       description: mount specified image
@@ -695,11 +635,7 @@ paths:
   /cluster/{clusterName}/rgw:
     x-swagger-router-controller: rgw
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
     get:
       summary: listRgwShares
       description: list rgw shares defined in cluster
@@ -737,7 +673,7 @@ paths:
             $ref: '#/definitions/RadosGatewayShare'
           required: true
       responses:
-        201:
+        200:
           description: indicates new share was created
         409:
           $ref: '#/responses/Conflict'
@@ -748,11 +684,7 @@ paths:
   /cluster/{clusterName}/rgw/{userName}:
     x-swagger-router-controller: rgw
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
       - name: userName
         in: path
         description: rgw username to query or change
@@ -795,11 +727,7 @@ paths:
   /cluster/{clusterName}/rgw/{userName}/quota:
     x-swagger-router-controller: rgw
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
       - name: userName
         in: path
         description: rgw username to query or change
@@ -849,11 +777,7 @@ paths:
   /cluster/{clusterName}/performance/{reportType}/{resourceType}/{resourceName}:
     x-swagger-router-controller: performance
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
       - name: reportType
         in: path
         description: type of requested report
@@ -923,11 +847,7 @@ paths:
   /cluster/{clusterName}/samba:
     x-swagger-router-controller: samba
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
     get:
       summary: listSambaShares
       description: gets list of samba shares defined
@@ -937,13 +857,19 @@ paths:
       x-required-role: user
       tags:
         - Samba
+      parameters:
+        - $ref: '#/parameters/listStart'
+        - $ref: '#/parameters/listLength'
       responses:
         200:
           description: returns list of samba shares defined
           schema:
-            type: array
-            items:
-              $ref: '#/definitions/SambaShare'
+            type: object
+            properties:
+              result:
+                type: array
+                items:
+                  $ref: '#/definitions/SambaShare'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -951,16 +877,8 @@ paths:
   /cluster/{clusterName}/samba/{shareName}:
     x-swagger-router-controller: samba
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: shareName
-        in: path
-        description: name of samba share
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/shareName'
     post:
       summary: addSambaShare
       description: creates a new samba share
@@ -975,11 +893,41 @@ paths:
           in: body
           description: information about new samba share to create
           schema:
-            $ref: '#/definitions/SambaShare'
+            type: object
+            required:
+              - image
+              - pool
+              - host
+            properties:
+              image:
+                type: string
+                description: rbd image name to mount for share
+              pool:
+                type: string
+                description: pool in which rbd image resides in
+              host:
+                type: string
+                description: host which will mount image
+              comment:
+                type: string
+                description: a comment to show for share
+                default: ''
+              browsable:
+                type: boolean
+                description: whether share should be visible at server root
+                default: false
+              guest:
+                $ref: '#/definitions/SambaPermission'
+              acl:
+                type: array
+                items:
+                  $ref: '#/definitions/SambaAcl'
           required: true
       responses:
-        201:
+        200:
           description: indicates new samba share was created
+          schema:
+            $ref: '#/definitions/SambaShare'
         404:
           $ref: '#/responses/NotFound'
         409:
@@ -1016,6 +964,8 @@ paths:
       responses:
         200:
           description: indicates that samba share was deleted successfuly
+          schema:
+            $ref: '#/definitions/EmptyObject'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -1023,16 +973,8 @@ paths:
   /cluster/{clusterName}/samba/{shareName}/comment:
     x-swagger-router-controller: samba
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: shareName
-        in: path
-        description: name of samba share
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/shareName'
     patch:
       summary: updateSambaShareComment
       description: updates a share comment
@@ -1047,11 +989,18 @@ paths:
           in: body
           description: new comment to apply on share
           schema:
-            type: string
+            type: object
+            required:
+              - comment
+            properties:
+              comment:
+                type: string
           required: true
       responses:
         200:
           description: indicates comment on samba share was successfuly updated
+          schema:
+            $ref: '#/definitions/EmptyObject'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -1059,16 +1008,8 @@ paths:
   /cluster/{clusterName}/samba/{shareName}/browsable:
     x-swagger-router-controller: samba
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: shareName
-        in: path
-        description: name of samba share
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/shareName'
     patch:
       summary: updateSambaShareBrowsable  
       description: updates a share browsable attribute
@@ -1083,11 +1024,16 @@ paths:
           in: body
           description: new browsable attribute to set on share
           schema:
-            type: boolean
+            type: object
+            properties:
+              browsable:
+                type: boolean
           required: true
       responses:
         200:
           description: indicates browsable attribute on samba share was successfuly updated
+          schema:
+            $ref: '#/definitions/EmptyObject'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -1095,16 +1041,8 @@ paths:
   /cluster/{clusterName}/samba/{shareName}/guest:
     x-swagger-router-controller: samba
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: shareName
-        in: path
-        description: name of samba share
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/shareName'
     patch:
       summary: updateSambaShareGuestPermission
       description: updates guest user access on samba share
@@ -1119,11 +1057,16 @@ paths:
           in: body
           description: new guest permission to apply
           schema:
-            $ref: '#/definitions/SambaPermission'
+            type: object
+            properties:
+              permission:
+                $ref: '#/definitions/SambaPermission'
           required: true
       responses:
         200:
           description: indicates guest access permission was updated on samba share
+          schema:
+            $ref: '#/definitions/EmptyObject'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -1131,16 +1074,8 @@ paths:
   /cluster/{clusterName}/samba/{shareName}/acl:
     x-swagger-router-controller: samba
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: shareName
-        in: path
-        description: name of samba share
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/shareName'
     post:
       summary: addSambaShareUser
       description: create a new user credentials for samba share
@@ -1158,8 +1093,10 @@ paths:
             $ref: '#/definitions/SambaAcl'
           required: true
       responses:
-        201:
+        200:
           description: indicated user credentials was created
+          schema:
+            $ref: '#/definitions/EmptyObject'
         409:
           $ref: '#/responses/Conflict'
         400:
@@ -1171,16 +1108,8 @@ paths:
   /cluster/{clusterName}/samba/{shareName}/acl/{userName}:
     x-swagger-router-controller: samba
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: shareName
-        in: path
-        description: name of samba share
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/shareName'
       - name: userName
         in: path
         description: username to delete or edit
@@ -1195,9 +1124,18 @@ paths:
       x-required-role: user
       tags:
         - Samba
+      parameters:
+        - name: empty
+          in: body
+          description: empty request object
+          required: true
+          schema:
+            $ref: '#/definitions/EmptyObject'
       responses:
         200:
           description: indicates user was deleted from share successfuly
+          schema:
+            $ref: '#/definitions/EmptyObject'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -1205,16 +1143,8 @@ paths:
   /cluster/{clusterName}/samba/{shareName}/acl/{userName}/password:
     x-swagger-router-controller: samba
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: shareName
-        in: path
-        description: name of samba share
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/shareName'
       - name: userName
         in: path
         description: username to delete or edit
@@ -1234,11 +1164,16 @@ paths:
           in: body
           description: new password to set
           schema:
-            type: string
+            type: object
+            properties:
+              password:
+                type: string
           required: true
       responses:
         200:
           description: indicates password was successfuly changed for user
+          schema:
+            $ref: '#/definitions/EmptyObject'
         400:
           $ref: '#/responses/BadRequest'
         404:
@@ -1248,16 +1183,8 @@ paths:
   /cluster/{clusterName}/samba/{shareName}/acl/{userName}/permission:
     x-swagger-router-controller: samba
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: shareName
-        in: path
-        description: name of samba share
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/shareName'
       - name: userName
         in: path
         description: username to delete or edit
@@ -1277,11 +1204,16 @@ paths:
           in: body
           description: new permission to set
           schema:
-            $ref: '#/definitions/SambaPermission'
+            type: object
+            properties:
+              permission:
+                $ref: '#/definitions/SambaPermission'
           required: true
       responses:
         200:
           description: indicates permission was successfuly changed for user
+          schema:
+            $ref: '#/definitions/EmptyObject'
         400:
           $ref: '#/responses/BadRequest'
         404:
@@ -1291,16 +1223,8 @@ paths:
   /cluster/{clusterName}/samba/{shareName}/capacity:
     x-swagger-router-controller: samba
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: shareName
-        in: path
-        description: name of samba share
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/shareName'
     patch:
       summary: extendSambaShare
       description: extends size of samba share
@@ -1315,11 +1239,17 @@ paths:
           in: body
           description: size to increase in MB (megabytes)
           schema:
-            type: integer
+            type: object
+            properties:
+              capacity:
+                type: integer
+                minimum: 100
           required: true
       responses:
         200:
           description: indicates capacity was extended successfuly
+          schema:
+            $ref: '#/definitions/SambaShare'
         400:
           $ref: '#/responses/BadRequest'
         404:
@@ -1329,11 +1259,7 @@ paths:
   /cluster/{clusterName}/iscsi:
     x-swagger-router-controller: iscsi
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
     post:
       summary: addScsiTarget
       description: adds a new iscsi target
@@ -1351,7 +1277,7 @@ paths:
             $ref: '#/definitions/IScsiTarget'
           required: true
       responses:
-        201:
+        200:
           description: indicates new iscsi target was defined
         404:
           $ref: '#/responses/NotFound'
@@ -1384,11 +1310,7 @@ paths:
   /cluster/{clusterName}/iscsi/host:
     x-swagger-router-controller: iscsi
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
     get:
       summary: listScsiHosts
       description: returns list of host names serving iscsi targets
@@ -1413,11 +1335,7 @@ paths:
   /cluster/{clusterName}/iscsi/host/{hostName}:
     x-swagger-router-controller: iscsi
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
       - name: hostName
         in: path
         description: name of requested host
@@ -1445,11 +1363,7 @@ paths:
   /cluster/{clusterName}/iscsi/host/{hostName}/auth:
     x-swagger-router-controller: iscsi
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
       - name: hostName
         in: path
         description: name of requested host
@@ -1499,16 +1413,8 @@ paths:
   /cluster/{clusterName}/iscsi/{targetName}:
     x-swagger-router-controller: iscsi
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: targetName
-        in: path
-        description: name of iscsi target
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/targetName'
     get:
       summary: getScsiTarget
       description: gets information about a specific iscsi target
@@ -1545,16 +1451,8 @@ paths:
   /cluster/{clusterName}/iscsi/{targetName}/auth:
     x-swagger-router-controller: iscsi
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: targetName
-        in: path
-        description: name of iscsi target
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/targetName'
     post:
       summary: setScsiTargetAuthentication    
       description: set authentication on target
@@ -1597,16 +1495,8 @@ paths:
   /cluster/{clusterName}/iscsi/{targetName}/capacity:
     x-swagger-router-controller: iscsi
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: targetName
-        in: path
-        description: name of iscsi target
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/targetName'
     patch:
       summary: extendScsiTargetCapacity
       description: used for extending iscsi capacity
@@ -1635,16 +1525,8 @@ paths:
   /cluster/{clusterName}/iscsi/{targetName}/lun:
     x-swagger-router-controller: iscsi
     parameters:
-      - name: clusterName
-        in: path
-        description: name of requested cluster
-        type: string
-        required: true
-      - name: targetName
-        in: path
-        description: name of iscsi target
-        type: string
-        required: true
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/targetName'
     post:
       summary: addScsiTargetLun
       description: used for creating another LUN for iscsi target
@@ -1691,6 +1573,36 @@ parameters:
     minimum: 0
     default: 10
     maximum: 50
+  clusterName:
+    name: clusterName
+    in: path
+    description: name of requested cluster
+    type: string
+    required: true
+  imageName:
+    name: imageName
+    in: path
+    description: rbd image to manage
+    type: string
+    required: true
+  pool:
+    name: pool
+    in: path
+    description: pool name for rbd image
+    type: string
+    required: true
+  shareName:
+    name: shareName
+    in: path
+    description: name of samba share
+    type: string
+    required: true
+  targetName:
+    name: targetName
+    in: path
+    description: name of iscsi target
+    type: string
+    required: true
 
 responses:
   Conflict:
@@ -1975,7 +1887,6 @@ definitions:
       - image
       - pool
       - cluster
-      - id
       - guest
       - acl
     properties:
@@ -2006,10 +1917,6 @@ definitions:
       host:
         type: string
         description: host vm containing samba share
-      id:
-        type: string
-        description: ceph credentials to use, usually should be admin
-        default: admin
       guest:
         $ref: '#/definitions/SambaPermission'
       acl:
@@ -2017,6 +1924,12 @@ definitions:
         description: list of user credentials for this samba share
         items:
           $ref: '#/definitions/SambaAcl'
+      status:
+        type: string
+        description: whether samba share is healthy or not
+        enum:
+          - up
+          - missing
   PerformancePoint:
     type: object
     description: shows performance collected

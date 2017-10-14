@@ -8,6 +8,8 @@ const Task = require('co-task');
 const env = require('../../config/env');
 const isStackTraceAvailable = env === 'development';
 const except = require('./except');
+const log = require('logging').default('Restified');
+const ErrorFormatter = require('../../../../lib/utils/ErrorFormatter');
 
 class Restified {
   /**
@@ -50,6 +52,8 @@ class Restified {
         else if (types.isString(err)) {
           message = err;
         }
+
+        log.error(ErrorFormatter.format(err));
 
         res.statusCode = statusCode;
         res.json({

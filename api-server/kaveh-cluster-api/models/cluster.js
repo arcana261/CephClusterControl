@@ -28,9 +28,10 @@ module.exports = (sequelize, DataTypes) => {
     }
   });
 
-  Cluster.associate = function({Host, RbdImage}) {
+  Cluster.associate = function({Host, RbdImage, SambaShare}) {
     Cluster.hasMany(Host);
     Cluster.hasMany(RbdImage);
+    Cluster.hasMany(SambaShare);
   };
 
   Cluster.prototype.autoclose = function(fn) {
