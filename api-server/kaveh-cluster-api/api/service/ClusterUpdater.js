@@ -8,6 +8,7 @@ const RbdImageStatus = require('../../api/const/RbdImageStatus');
 const ImageNameParser = require('../../../../lib/utils/ImageNameParser');
 const SambaAuthUtils = require('../../../../lib/utils/SambaAuthUtils');
 const SambaStatus = require('../../api/const/SambaStatus');
+const SequentialAsyncMap = require('../../../../lib/utils/SequentialAsyncMap');
 
 const {
   Cluster,
@@ -307,20 +308,21 @@ class ClusterUpdater {
     const actualMountPoints = await proxy.rbd.getMapped();
     this._cancelationPoint.checkExceptionPoint();
 
-    const actualImages = await Promise.all((await proxy.rbd.ls({pool: '*'})).map(async name => {
-      try {
-        const parsedName = ImageNameParser.parse(name);
-        const mountPoint = actualMountPoints.filter(x => x.image === parsedName.fullName)[0];
-        const targetHost = mountPoint ? mountPoint.hostname : null;
+    const actualImages = await SequentialAsyncMap.map(await proxy.rbd.ls({pool: '*'}),
+      async name => {
+       try {
+         const parsedName = ImageNameParser.parse(name);
+         const mountPoint = actualMountPoints.filter(x => x.image === parsedName.fullName)[0];
+         const targetHost = mountPoint ? mountPoint.hostname : null;
 
-        return [name, await proxy.rbd.info({image: name, timeout: -1, host: targetHost})];
-      }
-      catch (err) {
-        return [name, null];
-      }
-    }));
+         return [name, await proxy.rbd.info({image: name, host: targetHost})];
+       }
+       catch (err) {
+         return [name, null];
+       }
+      });
+
     this._cancelationPoint.checkExceptionPoint();
-
 
     const fn = restified.autocommit(async t => {
       const images = await cluster.getRbdImages({transaction: t});
