@@ -40,10 +40,11 @@ module.exports = (sequelize, DataTypes) => {
     }
   });
 
-  RbdImage.associate = function({Cluster, Host, SambaShare}) {
+  RbdImage.associate = function({Cluster, Host, SambaShare, ScsiTarget}) {
     RbdImage.Cluster = RbdImage.belongsTo(Cluster);
     RbdImage.Host = RbdImage.belongsTo(Host);
-    RbdImage.hasMany(SambaShare);
+    RbdImage.SambaShare = RbdImage.hasOne(SambaShare);
+    RbdImage.ScsiTarget = RbdImage.hasOne(ScsiTarget);
   };
 
   return RbdImage;

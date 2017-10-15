@@ -1195,6 +1195,10 @@ async function addSambaShare(req, res) {
       throw new except.NotFoundError(`rbd image "${pool}/${image}" not found in cluster "${clusterName}"`);
     }
 
+    if ((await rbdImage.getSambaShare({transaction: t})) !== null) {
+      throw new except.ConflictError(`rbd image "${pool}/${image}" is already bound to another samba share`);
+    }
+
     const share = await SambaShare.findOne({
       where: {
         name: shareName
