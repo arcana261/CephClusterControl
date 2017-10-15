@@ -134,8 +134,10 @@ class Restified {
       const t = await sequelize.transaction();
 
       try {
-        await fn.apply(this, [t].concat(args));
+        const result = await fn.apply(this, [t].concat(args));
         await t.commit();
+
+        return result;
       }
       catch (err) {
         try {

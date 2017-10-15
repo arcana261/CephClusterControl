@@ -116,7 +116,7 @@ async function extendRbdImage(req, res) {
 
   await preconditionChecker();
 
-  await Retry.run(async () => {
+  const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       const name = ImageNameParser.parse(imageName, pool);
       const mountPoint = (await proxy.rbd.getMapped())
@@ -151,14 +151,16 @@ async function extendRbdImage(req, res) {
 
         await image.save({transaction: t});
 
-        res.json(await formatRbdImage(t, image));
+        return await formatRbdImage(t, image);
       });
 
-      await gn();
+      return await gn();
     });
 
-    await fn();
+    return await fn();
   }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function umountRbdImage(req, res) {
@@ -198,7 +200,7 @@ async function umountRbdImage(req, res) {
 
   await preconditionChecker();
 
-  await Retry.run(async () => {
+  const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       await proxy.rbd.umount({image: imageName, pool: pool, host: host, force: force});
 
@@ -232,14 +234,16 @@ async function umountRbdImage(req, res) {
         await image.save({transaction: t});
         await image.setHost(null, {transaction: t});
 
-        res.json(await formatRbdImage(t, image));
+        return await formatRbdImage(t, image);
       });
 
-      await gn();
+      return await gn();
     });
 
-    await fn();
+    return await fn();
   }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function mountRbdImage(req, res) {
@@ -282,7 +286,7 @@ async function mountRbdImage(req, res) {
 
   await preconditionChecker();
 
-  await Retry.run(async () => {
+  const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       await proxy.rbd.mount({image: imageName, pool: pool, host: host, readonly: readOnly, permanent: permanent});
       const name = ImageNameParser.parse(imageName, pool);
@@ -334,14 +338,16 @@ async function mountRbdImage(req, res) {
           }
         }
 
-        res.json(await formatRbdImage(t, image));
+        return await formatRbdImage(t, image);
       });
 
-      await gn();
+      return await gn();
     });
 
-    await fn();
+    return await fn();
   }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function deleteRbdImage(req, res) {
@@ -379,7 +385,7 @@ async function deleteRbdImage(req, res) {
 
   await preconditionChecker();
 
-  await Retry.run(async () => {
+  const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       try {
         await proxy.rbd.umount({image: imageName, pool: pool});
@@ -412,14 +418,16 @@ async function deleteRbdImage(req, res) {
 
         await image.destroy({transaction: t});
 
-        res.json({});
+        return {};
       });
 
-      await gn();
+      return await gn();
     });
 
-    await fn();
+    return await fn();
   }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function createRbdImage(req, res) {
@@ -461,7 +469,7 @@ async function createRbdImage(req, res) {
 
   await preconditionChecker();
 
-  await Retry.run(async () => {
+  const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       try {
         await proxy.rbd.create({image: image, pool: pool, size: diskSize, format: fileSystem});
@@ -502,14 +510,16 @@ async function createRbdImage(req, res) {
 
         await rbdImage.setCluster(cluster, {transaction: t});
 
-        res.json(await formatRbdImage(t, rbdImage));
+        return await formatRbdImage(t, rbdImage);
       });
 
-      await gn();
+      return await gn();
     });
 
-    await fn();
+    return await fn();
   }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function getRbdImage(t, req, res) {

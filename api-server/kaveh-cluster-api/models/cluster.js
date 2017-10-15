@@ -48,7 +48,7 @@ module.exports = (sequelize, DataTypes) => {
 
       try {
         const proxy = new Proxy(client);
-        await fn.apply(this, [proxy].concat(args));
+        return await fn.apply(this, [proxy].concat(args));
       }
       finally {
         await client.stop();

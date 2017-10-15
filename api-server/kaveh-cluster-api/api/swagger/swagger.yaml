@@ -1277,11 +1277,40 @@ paths:
           in: body
           description: information about new iscsi target
           schema:
-            $ref: '#/definitions/IScsiTarget'
+            type: object
+            required:
+              - name
+              - domain
+              - image
+              - pool
+              - size
+              - host
+            properties:
+              name:
+                type: string
+                description: name of new iscsi share
+              domain:
+                type: string
+                description: host and domain of iqn part of iscsi share like 'example.com'
+              image:
+                type: string
+                description: rbd image name
+              pool:
+                type: string
+                description: pool which rbd image resides in
+              size:
+                type: integer
+                description: size of first LUN to create for iscsi share
+                minimum: 100
+              host:
+                type: string
+                description: hostname of VM that will host new iscsi target
           required: true
       responses:
         200:
           description: indicates new iscsi target was defined
+          schema:
+            $ref: '#/definitions/IScsiTarget'
         404:
           $ref: '#/responses/NotFound'
         400:
@@ -1330,13 +1359,19 @@ paths:
       tags:
         - iSCSI
         - Host
+      parameters:
+        - $ref: '#/parameters/listStart'
+        - $ref: '#/parameters/listLength'
       responses:
         200:
           description: returns list of hosts
           schema:
-            type: array
-            items:
-              $ref: '#/definitions/IScsiHost'
+            type: object
+            properties:
+              result:
+                type: array
+                items:
+                  $ref: '#/definitions/IScsiHost'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -1393,11 +1428,22 @@ paths:
           in: body
           description: new authentication parameters to set
           schema:
-            $ref: '#/definitions/IScsiAuthentication'
+            type: object
+            required:
+              - password
+              - domain
+            properties:
+              password:
+                $ref: '#/definitions/IScsiPassword'
+              domain:
+                type: string
+                description: domain to apply to client id IQN e.g. "example.com"
           required: true
       responses:
         200:
           description: indicates authentication parameters was changed
+          schema:
+            $ref: '#/definitions/IScsiHost'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -1415,6 +1461,8 @@ paths:
       responses:
         200:
           description: indicates authentication is deleted from portal
+          schema:
+            $ref: '#/definitions/IScsiHost'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -1453,6 +1501,8 @@ paths:
       responses:
         200:
           description: indicates iscsi target was deleted
+          schema:
+            $ref: '#/definitions/EmptyObject'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -1477,10 +1527,15 @@ paths:
           description: authentication to set
           required: true
           schema:
-            $ref: '#/definitions/IScsiAuthentication'
+            type: object
+            properties:
+              password:
+                $ref: '#/definitions/IScsiPassword'
       responses:
         200:
           description: means that authentication is changed successfuly on target
+          schema:
+            $ref: '#/definitions/IScsiTarget'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -1497,6 +1552,8 @@ paths:
       responses:
         200:
           description: means that authentication is deleted successfuly from target
+          schema:
+            $ref: '#/definitions/IScsiTarget'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -1518,13 +1575,19 @@ paths:
       parameters:
         - name: capacity
           in: body
-          description: new capacity in MB (megabytes)
+          description: amount to increase in MB (megabytes)
           required: true
           schema:
-            type: integer
+            type: object
+            properties:
+              size:
+                type: integer
+                minimum: 100
       responses:
         200:
           description: means that capacity was successfuly extended
+          schema:
+            $ref: '#/definitions/IScsiTarget'
         400:
           $ref: '#/responses/BadRequest'
         404:
@@ -1761,6 +1824,10 @@ definitions:
         enum:
           - up
           - down
+  IScsiPassword:
+    type: string
+    description: iscsi compatible password string
+    pattern: '^([a-z0-9A-Z@#$%]{12})?$'
   IScsiAuthentication:
     type: object
     description: encapsulates CHAP authentication credentials
@@ -1775,9 +1842,7 @@ definitions:
         type: string
         description: chap iQN
       password:
-        type: string
-        description: password
-        pattern: '^[a-z0-9A-Z@#$%]{12}$'
+        $ref: '#/definitions/IScsiPassword'
   IScsiIqn:
     type: object
     description: shows parsed IQN information

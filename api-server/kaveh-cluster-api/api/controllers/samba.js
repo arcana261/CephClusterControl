@@ -163,7 +163,7 @@ async function extendSambaShare(req, res) {
 
   await preconditionChecker();
 
-  await Retry.run(async () => {
+  const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       try {
         await proxy.samba.extend(shareName, capacity);
@@ -194,14 +194,16 @@ async function extendSambaShare(req, res) {
 
         await rbdImage.save({transaction: t});
 
-        res.json(await formatSambaShare(t, cluster, share));
+        return await formatSambaShare(t, cluster, share);
       });
 
-      await gn();
+      return await gn();
     });
 
-    await fn();
+    return await fn();
   }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function updateSambaShareUserPermission(req, res) {
@@ -255,7 +257,7 @@ async function updateSambaShareUserPermission(req, res) {
 
   await preconditionChecker();
 
-  await Retry.run(async () => {
+  const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       try {
         const actualUser = await proxy.samba.getUser(shareName, userName);
@@ -307,14 +309,16 @@ async function updateSambaShareUserPermission(req, res) {
 
         await user.save({transaction: t});
 
-        res.json({});
+        return {};
       });
 
-      await gn();
+      return await gn();
     });
 
-    await fn();
+    return await fn();
   }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function updateSambaShareUserPassword(req, res) {
@@ -368,7 +372,7 @@ async function updateSambaShareUserPassword(req, res) {
 
   await preconditionChecker();
 
-  await Retry.run(async () => {
+  const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       try {
         const actualUser = await proxy.samba.getUser(shareName, userName);
@@ -420,14 +424,16 @@ async function updateSambaShareUserPassword(req, res) {
 
         await user.save({transaction: t});
 
-        res.json({});
+        return {};
       });
 
-      await gn();
+      return await gn();
     });
 
-    await fn();
+    return await fn();
   }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function deleteSambaShareUser(req, res) {
@@ -478,7 +484,7 @@ async function deleteSambaShareUser(req, res) {
 
   await preconditionChecker();
 
-  await Retry.run(async () => {
+  const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       try {
         await proxy.samba.delUser(shareName, userName);
@@ -534,14 +540,16 @@ async function deleteSambaShareUser(req, res) {
           await user.destroy({transaction: t});
         }
 
-        res.json({});
+        return {};
       });
 
-      await gn();
+      return await gn();
     });
 
-    await fn();
+    return await fn();
   }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function addSambaShareUser(req, res) {
@@ -617,7 +625,7 @@ async function addSambaShareUser(req, res) {
 
   await preconditionChecker();
 
-  await Retry.run(async () => {
+  const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       try {
         await proxy.samba.addUser(shareName, userName, {
@@ -693,14 +701,16 @@ async function addSambaShareUser(req, res) {
         await acl.setSambaUser(user, {transaction: t});
         await acl.setSambaShare(share, {transaction: t});
 
-        res.json({});
+        return {};
       });
 
-      await gn();
+      return await gn();
     });
 
-    await fn();
+    return await fn();
   }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function updateSambaShareGuestPermission(req, res) {
@@ -739,7 +749,7 @@ async function updateSambaShareGuestPermission(req, res) {
 
   await preconditionChecker();
 
-  await Retry.run(async () => {
+  const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       let actualShare = null;
 
@@ -786,14 +796,16 @@ async function updateSambaShareGuestPermission(req, res) {
         });
         await share.save({transaction: t});
 
-        res.json({});
+        return {};
       });
 
-      await gn();
+      return await gn();
     });
 
-    await fn();
+    return await fn();
   }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function updateSambaShareComment(req, res) {
@@ -832,7 +844,7 @@ async function updateSambaShareComment(req, res) {
 
   await preconditionChecker();
 
-  await Retry.run(async () => {
+  const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       let actualShare = null;
 
@@ -879,14 +891,16 @@ async function updateSambaShareComment(req, res) {
         });
         await share.save({transaction: t});
 
-        res.json({});
+        return {};
       });
 
-      await gn();
+      return await gn();
     });
 
-    await fn();
+    return await fn();
   }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function updateSambaShareBrowsable(req, res) {
@@ -925,7 +939,7 @@ async function updateSambaShareBrowsable(req, res) {
 
   await preconditionChecker();
 
-  await Retry.run(async () => {
+  const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       let actualShare = null;
 
@@ -972,14 +986,16 @@ async function updateSambaShareBrowsable(req, res) {
         });
         await share.save({transaction: t});
 
-        res.json({});
+        return {};
       });
 
-      await gn();
+      return await gn();
     });
 
-    await fn();
+    return await fn();
   }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function deleteSambaShare(req, res) {
@@ -1015,7 +1031,7 @@ async function deleteSambaShare(req, res) {
 
   await preconditionChecker();
 
-  await Retry.run(async () => {
+  const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       try {
         await proxy.samba.del(shareName);
@@ -1060,14 +1076,16 @@ async function deleteSambaShare(req, res) {
           }
         }
 
-        res.json({});
+        return {};
       });
 
-      await gn();
+      return await gn();
     });
 
-    await fn();
+    return await fn();
   }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function getSambaShare(t, req, res) {
@@ -1199,6 +1217,10 @@ async function addSambaShare(req, res) {
       throw new except.ConflictError(`rbd image "${pool}/${image}" is already bound to another samba share`);
     }
 
+    if ((await rbdImage.getScsiTarget({transaction: t})) !== null) {
+      throw new except.ConflictError(`rbd image "${pool}/${image}" is already bound to another iscsi share`);
+    }
+
     const share = await SambaShare.findOne({
       where: {
         name: shareName
@@ -1253,7 +1275,7 @@ async function addSambaShare(req, res) {
     host: hostName
   };
 
-  await Retry.run(async () => {
+  const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       await proxy.samba.add(share, hostName);
 
@@ -1323,12 +1345,14 @@ async function addSambaShare(req, res) {
           await aclInstance.setSambaShare(share, {transaction: t});
         }
 
-        res.json(await formatSambaShare(t, cluster, share));
+        return await formatSambaShare(t, cluster, share);
       });
 
-      await gn();
+      return await gn();
     });
 
-    await fn();
+    return await fn();
   }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
