@@ -162,6 +162,9 @@ paths:
       x-required-role: user
       tags:
         - Cluster
+      parameters:
+        - $ref: '#/parameters/listStart'
+        - $ref: '#/parameters/listLength'
       responses:
         200:
           description: returns list of defined clusters
@@ -1296,13 +1299,19 @@ paths:
       x-required-role: user
       tags:
         - iSCSI
+      parameters:
+        - $ref: '#/parameters/listStart'
+        - $ref: '#/parameters/listLength'
       responses:
         200:
           description: returns list of iscsi targets defined
           schema:
-            type: array
-            items:
-              $ref: '#/definitions/IScsiTarget'
+            type: object
+            properties:
+              result:
+                type: array
+                items:
+                  $ref: '#/definitions/IScsiTarget'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -1759,6 +1768,9 @@ definitions:
       - userId
       - password
     properties:
+      enabled:
+        type: boolean
+        description: whether authentication is enabled
       userId:
         type: string
         description: chap iQN
@@ -1790,39 +1802,40 @@ definitions:
       tag:
         type: string
         description: tag part
-  IScsiLunList:
+  IScsiLun:
     type: object
-    description: lists LUNs defined for an iSCSI target
-    required:
-      - sizes
-      - image
-      - pool
+    description: shows size and status of a disk LUN in an iSCSI target
     properties:
-      sizes:
-        description: size of LUNs in MB (megabytes)
-        type: array
-        items:
-          type: integer
-          description: size of LUN in MB (megabyte)
-      image:
-        type: string
-        description: rbd image used for LUNs
-      pool:
-        type: string
-        description: rbd pool in which image resides
-      capacity:
+      size:
         type: integer
-        description: total capacity of rbd image in MB (megabytes)
-      used:
-        type: integer
-        description: how much storage is used in MB (megabyte)
+        description: size of disk LUN in MB (megabytes)
+        minimum: 0
+      status:
+        type: string
+        description: whether lun is healthy or not
+        enum:
+          - up
+          - missing
   IScsiTarget:
     type: object
     description: shows information about an iSCSI target
     required:
       - iqn
       - stringifiedIqn
+      - capacity
+      - used
+      - allocated
+      - authentication
+      - name
+      - host
+      - status
+      - cluster
+      - image
+      - pool
     properties:
+      name:
+        type: string
+        description: target name excluding parts in iqn relating to date and domain
       iqn: 
         $ref: '#/definitions/IScsiIqn'
       stringifiedIqn:
@@ -1830,14 +1843,32 @@ definitions:
         description: full IQN as an string
       authentication:
         $ref: '#/definitions/IScsiAuthentication'
-      luns:
-        $ref: '#/definitions/IScsiLunList'
       host:
         type: string
         description: hostname of node containing iscsi target
       cluster:
         type: string
         description: name of cluster hosting target
+      capacity:
+        type: integer
+        description: amount in MB (megabyte) of iSCSI capacity
+      used:
+        type: integer
+        description: amount used in MB (megabyte) of iSCSI share
+      allocated:
+        type: integer
+        description: amount in MB (megabyte) of iSCSI capacity currently allocated to LUNs
+      image:
+        type: string
+        description: rbd image used for LUNs
+      pool:
+        type: string
+        description: rbd pool in which image resides
+      luns:
+        description: size of LUNs in MB (megabytes)
+        type: array
+        items:
+          $ref: '#/definitions/IScsiLun'
       status:
         type: string
         description: shows status of iscsi target

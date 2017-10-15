@@ -9,6 +9,7 @@ const ScsiTargetStatus = require('../api/const/ScsiTargetStatus');
  * @property {string} userName
  * @property {string} password
  * @property {string} status
+ * @property {string} name
  */
 
 module.exports = (sequelize, DataTypes) => {
@@ -22,7 +23,8 @@ module.exports = (sequelize, DataTypes) => {
       validate: {
         isIn: [ScsiTargetStatus._]
       }
-    }
+    },
+    name: DataTypes.STRING
   }, {
     classMethods: {
     }

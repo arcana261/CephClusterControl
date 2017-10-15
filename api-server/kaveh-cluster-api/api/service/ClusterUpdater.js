@@ -38,6 +38,7 @@ class ClusterUpdater {
    */
   _createScsiTargetModel(actualTarget) {
     return {
+      name: actualTarget.iqn.name,
       iqn: actualTarget.stringifiedIqn,
       requiresAuth: !!actualTarget.authentication,
       userName: actualTarget.authentication ? actualTarget.authentication.userId : null,

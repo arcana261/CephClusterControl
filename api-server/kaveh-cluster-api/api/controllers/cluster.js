@@ -139,8 +139,16 @@ async function getCluster(req, res) {
 }
 
 async function getClusterList(req, res) {
+  const {
+    start: {value: start = req.swagger.params.start.schema.default},
+    length: {value: length = req.swagger.params.length.schema.default}
+  } = req.swagger.params;
+
   res.json({
-    result: (await Cluster.findAll()).map(cluster => formatCluster(cluster))
+    result: (await Cluster.findAll({
+      limit: length,
+      offset: start
+    })).map(cluster => formatCluster(cluster))
   });
 }
 
