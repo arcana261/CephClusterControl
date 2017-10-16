@@ -332,8 +332,17 @@ async function deleteRbdImage(req, res) {
 
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
-      try {
-        if (host) {
+      function checkError(err) {
+        if (!types.isString(err) || err.indexOf('No such file or directory') < 0) {
+          throw err;
+        }
+        else {
+          logger.warn(ErrorFormatter.format(err));
+        }
+      }
+
+      if (host) {
+        try {
           await proxy.rbd.umount({
             image: imageName,
             pool: pool,
@@ -341,16 +350,16 @@ async function deleteRbdImage(req, res) {
             timeout: ClusterUpdater.ExtendedTimeoutValue
           });
         }
+        catch (err) {
+          checkError(err);
+        }
+      }
 
+      try {
         await proxy.rbd.rm({image: imageName, pool: pool});
       }
       catch (err) {
-        if (!types.isString(err) || err.indexOf('No such file or directory') < 0) {
-          throw err;
-        }
-        else {
-          logger.warn(ErrorFormatter.format(err));
-        }
+        checkError(err);
       }
 
       const gn = restified.autocommit(async t => {

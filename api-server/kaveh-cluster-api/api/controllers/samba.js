@@ -17,6 +17,8 @@ const logger = require('logging').default('SambaController');
 const ErrorFormatter = require('../../../../lib/utils/ErrorFormatter');
 const Retry = require('../../../../lib/utils/Retry');
 const config = require('../../config');
+const ClusterUpdater = require('../service/ClusterUpdater');
+const ImageNameParser = require('../../../../lib/utils/ImageNameParser');
 
 module.exports = restified.make({
   /**
@@ -159,6 +161,14 @@ async function extendSambaShare(req, res) {
 
     rbdImage = share.RbdImage;
     host = share.Host;
+
+    if (!rbdImage) {
+      throw new except.NotFoundError(`no rbd image found to be bound to share "${shareName}" in cluster "${clusterName}"`);
+    }
+
+    if (!host) {
+      throw new except.NotFoundError(`share "${shareName}" is missing in cluster "${clusterName}"`);
+    }
   });
 
   await preconditionChecker();
@@ -166,7 +176,10 @@ async function extendSambaShare(req, res) {
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       try {
-        await proxy.samba.extend(shareName, capacity);
+        await proxy.samba.extend(shareName, capacity, {
+          host: host.hostName,
+          timeout: ClusterUpdater.ExtendedTimeoutValue
+        });
       }
       catch (err) {
         if ((err instanceof Error) && err.message.indexOf('share not found') >= 0) {
@@ -177,24 +190,20 @@ async function extendSambaShare(req, res) {
         }
       }
 
-      const info = await Retry.run(async () => {
-        return await proxy.rbd.info({
-          image: rbdImage.image,
-          pool: rbdImage.pool,
-          host: host.hostName,
-          timeout: 30000
-        });
-      }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+      const updater = new ClusterUpdater(clusterName);
+      const parsedName = ImageNameParser.parse(rbdImage.image, rbdImage.pool);
+
+      const rbdResult = await updater.updateRbdImages(cluster, proxy, host ? [host] : [],
+        {imageNames: [parsedName.fullName]});
+
+      rbdImage = rbdResult.images[0];
+      share.RbdImage = rbdResult.images[0];
+
+      const shareResult = await updater.updateSambaShares(cluster, proxy, [host],
+        {shareNames: [shareName]});
 
       const gn = restified.autocommit(async t => {
-        Object.assign(rbdImage, {
-          capacity: Math.round(info.diskSize || rbdImage.capacity),
-          used: Math.round(info.diskUsed || rbdImage.used)
-        });
-
-        await rbdImage.save({transaction: t});
-
-        return await formatSambaShare(t, cluster, share);
+        return await formatSambaShare(t, cluster, shareResult.shares[0]);
       });
 
       return await gn();
@@ -226,11 +235,16 @@ async function updateSambaShareUserPermission(req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found`);
   }
 
+  let host = null;
+
   const preconditionChecker = restified.autocommit(async t => {
     const [share] = await cluster.getSambaShares({
       where: {
         name: shareName
       },
+      include: [{
+        model: Host
+      }],
       limit: 1,
       offset: 0,
       transaction: t
@@ -253,6 +267,12 @@ async function updateSambaShareUserPermission(req, res) {
     if (!acl) {
       throw new except.NotFoundError(`username "${userName}" not found for share "${shareName}" in cluster "${clusterName}"`);
     }
+
+    host = share.Host;
+
+    if (!host) {
+      throw new except.NotFoundError(`share "${shareName}" is missing in cluster "${clusterName}"`);
+    }
   });
 
   await preconditionChecker();
@@ -260,9 +280,15 @@ async function updateSambaShareUserPermission(req, res) {
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       try {
-        const actualUser = await proxy.samba.getUser(shareName, userName);
+        const actualUser = await proxy.samba.getUser(shareName, userName, {
+          host: host.hostName,
+          timeout: ClusterUpdater.ExtendedTimeoutValue
+        });
         actualUser.permission = SambaAuthUtils.parsePermission(permission);
-        await proxy.samba.editUser(shareName, userName, actualUser);
+        await proxy.samba.editUser(shareName, userName, actualUser, {
+          host: host.hostName,
+          timeout: ClusterUpdater.ExtendedTimeoutValue
+        });
       }
       catch (err) {
         if ((err instanceof Error) && err.message.indexOf('share not found') >= 0) {
@@ -273,46 +299,12 @@ async function updateSambaShareUserPermission(req, res) {
         }
       }
 
-      const gn = restified.autocommit(async t => {
-        const [share] = await cluster.getSambaShares({
-          where: {
-            name: shareName
-          },
-          limit: 1,
-          offset: 0,
-          transaction: t
-        });
-
-        if (!share) {
-          throw new except.NotFoundError(`share "${shareName}" not found in cluster "${clusterName}"`);
-        }
-
-        const [acl] = await share.getSambaAcls({
-          include: [{
-            model: SambaUser,
-            where: {
-              userName: userName
-            },
-            transaction: t
-          }]
-        });
-
-        if (!acl) {
-          throw new except.NotFoundError(`username "${userName}" not found for share "${shareName}" in cluster "${clusterName}"`);
-        }
-
-        const user = acl.SambaUser;
-
-        Object.assign(user, {
-          permission: permission
-        });
-
-        await user.save({transaction: t});
-
-        return {};
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateSambaShares(cluster, proxy, [host], {
+        shareNames: [shareName]
       });
 
-      return await gn();
+      return {};
     });
 
     return await fn();
@@ -341,11 +333,16 @@ async function updateSambaShareUserPassword(req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found`);
   }
 
+  let host = null;
+
   const preconditionChecker = restified.autocommit(async t => {
     const [share] = await cluster.getSambaShares({
       where: {
         name: shareName
       },
+      include: [{
+        model: Host
+      }],
       limit: 1,
       offset: 0,
       transaction: t
@@ -368,6 +365,12 @@ async function updateSambaShareUserPassword(req, res) {
     if (!acl) {
       throw new except.NotFoundError(`username "${userName}" not found for share "${shareName}" in cluster "${clusterName}"`);
     }
+
+    host = share.Host;
+
+    if (!host) {
+      throw new except.NotFoundError(`share "${shareName}" is missing in cluster "${clusterName}"`);
+    }
   });
 
   await preconditionChecker();
@@ -375,9 +378,15 @@ async function updateSambaShareUserPassword(req, res) {
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       try {
-        const actualUser = await proxy.samba.getUser(shareName, userName);
+        const actualUser = await proxy.samba.getUser(shareName, userName, {
+          host: host.hostName,
+          timeout: ClusterUpdater.ExtendedTimeoutValue
+        });
         actualUser.password = password;
-        await proxy.samba.editUser(shareName, userName, actualUser);
+        await proxy.samba.editUser(shareName, userName, actualUser, {
+          host: host.hostName,
+          timeout: ClusterUpdater.ExtendedTimeoutValue
+        });
       }
       catch (err) {
         if ((err instanceof Error) && err.message.indexOf('share not found') >= 0) {
@@ -388,46 +397,12 @@ async function updateSambaShareUserPassword(req, res) {
         }
       }
 
-      const gn = restified.autocommit(async t => {
-        const [share] = await cluster.getSambaShares({
-          where: {
-            name: shareName
-          },
-          limit: 1,
-          offset: 0,
-          transaction: t
-        });
-
-        if (!share) {
-          throw new except.NotFoundError(`share "${shareName}" not found in cluster "${clusterName}"`);
-        }
-
-        const [acl] = await share.getSambaAcls({
-          include: [{
-            model: SambaUser,
-            where: {
-              userName: userName
-            },
-            transaction: t
-          }]
-        });
-
-        if (!acl) {
-          throw new except.NotFoundError(`username "${userName}" not found for share "${shareName}" in cluster "${clusterName}"`);
-        }
-
-        const user = acl.SambaUser;
-
-        Object.assign(user, {
-          password: password
-        });
-
-        await user.save({transaction: t});
-
-        return {};
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateSambaShares(cluster, proxy, [host], {
+        shareNames: [shareName]
       });
 
-      return await gn();
+      return {};
     });
 
     return await fn();
@@ -453,11 +428,16 @@ async function deleteSambaShareUser(req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found`);
   }
 
+  let host = null;
+
   const preconditionChecker = restified.autocommit(async t => {
     const [share] = await cluster.getSambaShares({
       where: {
         name: shareName
       },
+      include: [{
+        model: Host
+      }],
       limit: 1,
       offset: 0,
       transaction: t
@@ -480,6 +460,12 @@ async function deleteSambaShareUser(req, res) {
     if (!acl) {
       throw new except.NotFoundError(`username "${userName}" not found for share "${shareName}" in cluster "${clusterName}"`);
     }
+
+    host = share.Host;
+
+    if (!host) {
+      throw new except.NotFoundError(`share "${shareName}" is missing in cluster "${clusterName}"`);
+    }
   });
 
   await preconditionChecker();
@@ -487,7 +473,10 @@ async function deleteSambaShareUser(req, res) {
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       try {
-        await proxy.samba.delUser(shareName, userName);
+        await proxy.samba.delUser(shareName, userName, {
+          host: host.hostName,
+          timeout: ClusterUpdater.ExtendedTimeoutValue
+        });
       }
       catch (err) {
         if ((err instanceof Error) && err.message.indexOf('share not found') >= 0) {
@@ -498,52 +487,12 @@ async function deleteSambaShareUser(req, res) {
         }
       }
 
-      const gn = restified.autocommit(async t => {
-        const [share] = await cluster.getSambaShares({
-          where: {
-            name: shareName
-          },
-          limit: 1,
-          offset: 0,
-          transaction: t
-        });
-
-        if (!share) {
-          throw new except.NotFoundError(`share "${shareName}" not found in cluster "${clusterName}"`);
-        }
-
-        const [acl] = await share.getSambaAcls({
-          include: [{
-            model: SambaUser,
-            where: {
-              userName: userName
-            }
-          }],
-          transaction: t
-        });
-
-        if (!acl) {
-          throw new except.NotFoundError(`username "${userName}" not found for share "${shareName}" in cluster "${clusterName}"`);
-        }
-
-        const user = acl.SambaUser;
-
-        await acl.destroy({transaction: t});
-
-        const aclCount = (await user.getSambaAcls({
-          transaction: t,
-          limit: 1,
-          offset: 0
-        })).length;
-
-        if (aclCount < 1) {
-          await user.destroy({transaction: t});
-        }
-
-        return {};
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateSambaShares(cluster, proxy, [host], {
+        shareNames: [shareName]
       });
 
-      return await gn();
+      return {};
     });
 
     return await fn();
@@ -574,6 +523,7 @@ async function addSambaShareUser(req, res) {
   }
 
   let effectivePassword = password;
+  let host = null;
 
   const preconditionChecker = restified.autocommit(async t => {
     const [share] = await cluster.getSambaShares({
@@ -621,6 +571,12 @@ async function addSambaShareUser(req, res) {
         throw new except.ConflictError(`user "${userName}" already exists for share "${shareName}" in cluster "${clusterName}"`);
       }
     }
+
+    host = share.Host;
+
+    if (!host) {
+      throw new except.NotFoundError(`share "${shareName}" is missing in cluster "${clusterName}"`);
+    }
   });
 
   await preconditionChecker();
@@ -631,6 +587,9 @@ async function addSambaShareUser(req, res) {
         await proxy.samba.addUser(shareName, userName, {
           password: effectivePassword,
           permission: SambaAuthUtils.parsePermission(permission)
+        }, {
+          host: host.hostName,
+          timeout: ClusterUpdater.ExtendedTimeoutValue
         });
       }
       catch (err) {
@@ -642,69 +601,12 @@ async function addSambaShareUser(req, res) {
         }
       }
 
-      const gn = restified.autocommit(async t => {
-        const [share] = await cluster.getSambaShares({
-          where: {
-            name: shareName
-          },
-          include: [{
-            model: Host
-          }],
-          limit: 1,
-          offset: 0,
-          transaction: t
-        });
-
-        if (!share) {
-          throw new except.NotFoundError(`share "${shareName}" not found in cluster "${clusterName}"`);
-        }
-
-        let [user] = await share.Host.getSambaUsers({
-          where: {
-            userName: userName
-          },
-          limit: 1,
-          offset: 0,
-          transaction: t
-        });
-
-        if (!user) {
-          user = await SambaUser.create({
-            userName: userName,
-            password: effectivePassword
-          }, {transaction: t});
-
-          await user.setHost(share.Host, {transaction: t});
-        }
-        else {
-          const acls = await share.getSambaAcls({
-            include: [{
-              model: SambaUser,
-              where: {
-                userName: userName
-              }
-            }],
-            limit: 1,
-            offset: 0,
-            transaction: t
-          });
-
-          if (acls.length > 0) {
-            throw new except.ConflictError(`user "${userName}" already exists for share "${shareName}" in cluster "${clusterName}"`);
-          }
-        }
-
-        const acl = await SambaAcl.create({
-          permission: permission
-        }, {transaction: t});
-
-        await acl.setSambaUser(user, {transaction: t});
-        await acl.setSambaShare(share, {transaction: t});
-
-        return {};
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateSambaShares(cluster, proxy, [host], {
+        shareNames: [shareName]
       });
 
-      return await gn();
+      return {};
     });
 
     return await fn();
@@ -732,11 +634,16 @@ async function updateSambaShareGuestPermission(req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found`);
   }
 
+  let host = null;
+
   const preconditionChecker = restified.autocommit(async t => {
     const [share] = await cluster.getSambaShares({
       where: {
         name: shareName
       },
+      include: [{
+        model: Host
+      }],
       transaction: t,
       limit: 1,
       offset: 0
@@ -744,6 +651,12 @@ async function updateSambaShareGuestPermission(req, res) {
 
     if (!share) {
       throw new except.NotFoundError(`share "${shareName}" not found in cluster "${clusterName}"`);
+    }
+
+    host = share.Host;
+
+    if (!host) {
+      throw new except.NotFoundError(`share "${shareName}" is missing in cluster "${clusterName}"`);
     }
   });
 
@@ -754,7 +667,11 @@ async function updateSambaShareGuestPermission(req, res) {
       let actualShare = null;
 
       try {
-        actualShare = await proxy.samba.getShare(shareName);
+        actualShare = await proxy.samba.getShare(shareName, {
+          host: host.hostName,
+          timeout: ClusterUpdater.ExtendedTimeoutValue,
+          info: false
+        });
       }
       catch (err) {
         if ((err instanceof Error) && err.message.indexOf('share not found') >= 0) {
@@ -768,7 +685,7 @@ async function updateSambaShareGuestPermission(req, res) {
       actualShare.guest = SambaAuthUtils.parsePermission(permission);
 
       try {
-        await proxy.samba.update(actualShare);
+        await proxy.samba.update(actualShare, {timeout: ClusterUpdater.ExtendedTimeoutValue});
       }
       catch (err) {
         if ((err instanceof Error) && err.message.indexOf('share not found') >= 0) {
@@ -779,27 +696,12 @@ async function updateSambaShareGuestPermission(req, res) {
         }
       }
 
-      const gn = restified.autocommit(async t => {
-        const [share] = await cluster.getSambaShares({
-          where: {
-            name: shareName
-          },
-          transaction: t
-        });
-
-        if (!share) {
-          throw new except.NotFoundError(`share "${shareName}" not found in cluster "${clusterName}"`);
-        }
-
-        Object.assign(share, {
-          guest: permission
-        });
-        await share.save({transaction: t});
-
-        return {};
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateSambaShares(cluster, proxy, [host], {
+        shareNames: [shareName]
       });
 
-      return await gn();
+      return {};
     });
 
     return await fn();
@@ -827,11 +729,16 @@ async function updateSambaShareComment(req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found`);
   }
 
+  let host = null;
+
   const preconditionChecker = restified.autocommit(async t => {
     const [share] = await cluster.getSambaShares({
       where: {
         name: shareName
       },
+      include: [{
+        model: Host
+      }],
       transaction: t,
       limit: 1,
       offset: 0
@@ -839,6 +746,12 @@ async function updateSambaShareComment(req, res) {
 
     if (!share) {
       throw new except.NotFoundError(`share "${shareName}" not found in cluster "${clusterName}"`);
+    }
+
+    host = share.Host;
+
+    if (!host) {
+      throw new except.NotFoundError(`share "${shareName}" is missing in cluster "${clusterName}"`);
     }
   });
 
@@ -849,7 +762,11 @@ async function updateSambaShareComment(req, res) {
       let actualShare = null;
 
       try {
-        actualShare = await proxy.samba.getShare(shareName);
+        actualShare = await proxy.samba.getShare(shareName, {
+          host: host.hostName,
+          info: false,
+          timeout: ClusterUpdater.ExtendedTimeoutValue
+        });
       }
       catch (err) {
         if ((err instanceof Error) && err.message.indexOf('share not found') >= 0) {
@@ -863,7 +780,7 @@ async function updateSambaShareComment(req, res) {
       actualShare.comment = comment;
 
       try {
-        await proxy.samba.update(actualShare);
+        await proxy.samba.update(actualShare, {timeout: ClusterUpdater.ExtendedTimeoutValue});
       }
       catch (err) {
         if ((err instanceof Error) && err.message.indexOf('share not found') >= 0) {
@@ -874,27 +791,12 @@ async function updateSambaShareComment(req, res) {
         }
       }
 
-      const gn = restified.autocommit(async t => {
-        const [share] = await cluster.getSambaShares({
-          where: {
-            name: shareName
-          },
-          transaction: t
-        });
-
-        if (!share) {
-          throw new except.NotFoundError(`share "${shareName}" not found in cluster "${clusterName}"`);
-        }
-
-        Object.assign(share, {
-          comment: comment
-        });
-        await share.save({transaction: t});
-
-        return {};
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateSambaShares(cluster, proxy, [host], {
+        shareNames: [shareName]
       });
 
-      return await gn();
+      return {};
     });
 
     return await fn();
@@ -908,7 +810,7 @@ async function updateSambaShareBrowsable(req, res) {
     clusterName: {value: clusterName},
     shareName: {value: shareName},
     browsable: {value: {
-      browsable: browsable
+      browsable: browsable = false
     }}
   } = req.swagger.params;
 
@@ -922,11 +824,16 @@ async function updateSambaShareBrowsable(req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found`);
   }
 
+  let host = null;
+
   const preconditionChecker = restified.autocommit(async t => {
     const [share] = await cluster.getSambaShares({
       where: {
         name: shareName
       },
+      include: [{
+        model: Host
+      }],
       transaction: t,
       limit: 1,
       offset: 0
@@ -934,6 +841,12 @@ async function updateSambaShareBrowsable(req, res) {
 
     if (!share) {
       throw new except.NotFoundError(`share "${shareName}" not found in cluster "${clusterName}"`);
+    }
+
+    host = share.Host;
+
+    if (!host) {
+      throw new except.NotFoundError(`share "${shareName}" is missing in cluster "${clusterName}"`);
     }
   });
 
@@ -944,7 +857,11 @@ async function updateSambaShareBrowsable(req, res) {
       let actualShare = null;
 
       try {
-        actualShare = await proxy.samba.getShare(shareName);
+        actualShare = await proxy.samba.getShare(shareName, {
+          host: host.hostName,
+          info: false,
+          timeout: ClusterUpdater.ExtendedTimeoutValue
+        });
       }
       catch (err) {
         if ((err instanceof Error) && err.message.indexOf('share not found') >= 0) {
@@ -958,7 +875,7 @@ async function updateSambaShareBrowsable(req, res) {
       actualShare.browsable = browsable;
 
       try {
-        await proxy.samba.update(actualShare);
+        await proxy.samba.update(actualShare, {timeout: ClusterUpdater.ExtendedTimeoutValue});
       }
       catch (err) {
         if ((err instanceof Error) && err.message.indexOf('share not found') >= 0) {
@@ -969,27 +886,12 @@ async function updateSambaShareBrowsable(req, res) {
         }
       }
 
-      const gn = restified.autocommit(async t => {
-        const [share] = await cluster.getSambaShares({
-          where: {
-            name: shareName
-          },
-          transaction: t
-        });
-
-        if (!share) {
-          throw new except.NotFoundError(`share "${shareName}" not found in cluster "${clusterName}"`);
-        }
-
-        Object.assign(share, {
-          browsable: browsable
-        });
-        await share.save({transaction: t});
-
-        return {};
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateSambaShares(cluster, proxy, [host], {
+        shareNames: [shareName]
       });
 
-      return await gn();
+      return {};
     });
 
     return await fn();
@@ -1014,11 +916,16 @@ async function deleteSambaShare(req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found`);
   }
 
+  let host = null;
+
   const preconditionChecker = restified.autocommit(async t => {
     const [share] = await cluster.getSambaShares({
       where: {
         name: shareName
       },
+      include: [{
+        model: Host
+      }],
       transaction: t,
       limit: 1,
       offset: 0
@@ -1027,6 +934,12 @@ async function deleteSambaShare(req, res) {
     if (!share) {
       throw new except.NotFoundError(`share "${shareName}" not found in cluster "${clusterName}"`);
     }
+
+    host = share.Host;
+
+    if (!host) {
+      throw new except.NotFoundError(`share "${shareName}" is missing in cluster "${clusterName}"`);
+    }
   });
 
   await preconditionChecker();
@@ -1034,7 +947,10 @@ async function deleteSambaShare(req, res) {
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       try {
-        await proxy.samba.del(shareName);
+        await proxy.samba.del(shareName, {
+          timeout: ClusterUpdater.ExtendedTimeoutValue,
+          host: host.hostName
+        });
       }
       catch (err) {
         if ((err instanceof Error) && err.message.indexOf('share not found') >= 0) {
@@ -1069,9 +985,9 @@ async function deleteSambaShare(req, res) {
         await share.destroy({transaction: t});
 
         for (const user of users) {
-          const acls = await user.getSambaAcls({transaction: t, limit: 1, offset: 0});
+          const acls = await user.countSambaAcls({transaction: t});
 
-          if (acls.length < 1) {
+          if (acls < 1) {
             await user.destroy({transaction: t});
           }
         }
@@ -1177,8 +1093,10 @@ async function addSambaShare(req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found`);
   }
 
+  let host = null;
+
   const preconditionChecker = restified.autocommit(async t => {
-    const host = await Host.findOne({
+    host = await Host.findOne({
       where: {
         hostName: hostName
       },
@@ -1277,75 +1195,15 @@ async function addSambaShare(req, res) {
 
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
-      await proxy.samba.add(share, hostName);
+      await proxy.samba.add(share, hostName, {timeout: ClusterUpdater.ExtendedTimeoutValue});
+
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateSambaShares(cluster, proxy, [host], {
+        shareNames: [shareName]
+      });
 
       const gn = restified.autocommit(async t => {
-        const [host] = await cluster.getHosts({
-          where: {
-            hostName: hostName
-          },
-          transaction: t
-        });
-
-        if (!host) {
-          throw new except.NotFoundError(`host "${host}" not found in cluster "${clusterName}"`);
-        }
-
-        const [rbdImage] = await cluster.getRbdImages({
-          where: {
-            image: image,
-            pool: pool
-          },
-          transaction: t
-        });
-
-        if (!rbdImage) {
-          throw new except.NotFoundError(`rbd image "${pool}/${image}" not found in cluster "${clusterName}"`);
-        }
-
-        const share = await SambaShare.create({
-          name: shareName,
-          comment: comment,
-          browsable: browsable,
-          guest: guest,
-          status: SambaStatus.up
-        }, {transaction: t});
-
-        await share.setCluster(cluster, {transaction: t});
-        await share.setHost(host, {transaction: t});
-        await share.setRbdImage(rbdImage, {transaction: t});
-
-        for (let {userName, password, permission} of acl) {
-          let [user] = await host.getSambaUsers({
-            where: {
-              userName: userName
-            },
-            transaction: t,
-            limit: 1,
-            offset: 0
-          });
-
-          if (!user) {
-            user = await SambaUser.create({
-              userName: userName,
-              password: password
-            }, {transaction: t});
-
-            await user.setHost(host, {transaction: t});
-          }
-          else {
-            password = user.password;
-          }
-
-          const aclInstance = await SambaAcl.create({
-            permission: permission
-          }, {transaction: t});
-
-          await aclInstance.setSambaUser(user, {transaction: t});
-          await aclInstance.setSambaShare(share, {transaction: t});
-        }
-
-        return await formatSambaShare(t, cluster, share);
+        return await formatSambaShare(t, cluster, result.shares[0]);
       });
 
       return await gn();

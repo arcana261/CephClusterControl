@@ -284,15 +284,53 @@ class ClusterUpdater {
   /**
    * @param {ClusterModel} cluster
    * @param {Proxy} proxy
-   * @returns {Promise.<void>}
-   * @private
+   * @param {Array.<HostModel>} hosts
+   * @param {Array.<string>} shareNames
+   * @returns {Promise.<{
+   * hosts: Array.<HostModel>,
+   * shares: Array.<SambaShareModel>
+   * }>}
    */
-  async _updateSambaShares(cluster, proxy) {
-    const actualShares = await proxy.samba.ls();
+  async updateSambaShares(cluster, proxy, hosts, {shareNames = []} = {}) {
+    const filteredHosts = await (restified.autocommit(async t => {
+      return (await Promise.all(hosts.map(async host => {
+        const types = host.RpcTypes || (await host.getRpcTypes({transaction: t}));
+        return [host, types.some(type => type.name === 'samba')];
+      }))).map(([host, isSamba]) => isSamba ? host : null).filter(host => host !== null);
+    }))();
+
+    const updatePartially = (shareNames instanceof Array) && shareNames.length > 0;
+
+    let actualShares = (await Promise.all(filteredHosts.map(async host => {
+      try {
+        return await proxy.samba.ls(host.hostName, {info: false, timeout: ExtendedTimeout});
+      }
+      catch (err) {
+        host.status = HostStatus.down;
+        return [];
+      }
+    }))).reduce((prev, cur) => prev.concat(cur), []);
+
+    if (updatePartially) {
+      actualShares = actualShares.filter(x => shareNames.some(y => x.name === y));
+    }
+
     this._triggerExceptionPoint();
 
     const fn = restified.autocommit(async t => {
-      const shares = await cluster.getSambaShares({transaction: t});
+      const shares = updatePartially ?
+        (await Promise.all(shareNames.map(async name => {
+          return (await cluster.getSambaShares({
+            where: {
+              name: name
+            },
+            limit: 1,
+            offset: 0,
+            transaction: t
+          }))[0];
+        }))).filter(share => !!share) : (await cluster.getSambaShares({transaction: t}));
+
+      const result = [];
 
       for (const actualShare of actualShares) {
         let share = shares.filter(x => x.name === actualShare.name)[0];
@@ -305,6 +343,8 @@ class ClusterUpdater {
           Object.assign(share, this._createSambaShareModel(actualShare));
           await share.save({transaction: t});
         }
+
+        result.push(share);
 
         let host = await share.getHost({transaction: t});
 
@@ -320,6 +360,7 @@ class ClusterUpdater {
 
           if (host) {
             await share.setHost(host, {transaction: t});
+            share.Host = host;
           }
         }
 
@@ -338,6 +379,7 @@ class ClusterUpdater {
 
           if (rbdImage) {
             await share.setRbdImage(rbdImage, {transaction: t});
+            share.RbdImage = rbdImage;
           }
         }
 
@@ -394,23 +436,39 @@ class ClusterUpdater {
           const missingAcls = acls.filter(x => !(x.SambaUser.userName in actualShare.acl));
 
           for (const missingAcl of missingAcls) {
+            const user = missingAcl.SambaUser;
+
             await missingAcl.destroy({transaction: t});
+            const count = await user.countSambaAcls({transaction: t});
+
+            if (count < 1) {
+              await user.destroy({transaction: t});
+            }
           }
         }
       }
 
-      const missingShares = shares.filter(x => !actualShares.some(y => x.name === y.name));
+      if (!updatePartially) {
+        const missingShares = shares.filter(x => !actualShares.some(y => x.name === y.name));
 
-      for (const missingShare of missingShares) {
-        Object.assign(missingShare, {
-          status: SambaStatus.missing
-        });
+        for (const missingShare of missingShares) {
+          Object.assign(missingShare, {
+            status: SambaStatus.missing
+          });
 
-        await missingShare.save({transaction: t});
+          await missingShare.save({transaction: t});
+        }
       }
+
+      return result;
     });
 
-    await fn();
+    const result = await fn();
+
+    return {
+      hosts: hosts.filter(host => host.status !== HostStatus.down),
+      shares: result
+    };
   }
 
   /**
@@ -742,13 +800,15 @@ class ClusterUpdater {
       let hosts = await this._updateHosts(cluster, proxy);
       this._triggerExceptionPoint();
 
-      let result= await this.updateRbdImages(cluster, proxy, hosts);
+      let result = await this.updateRbdImages(cluster, proxy, hosts);
       this._triggerExceptionPoint();
       hosts = result.hosts;
       let images = result.images;
 
-      await this._updateSambaShares(cluster, proxy);
+      result = await this.updateSambaShares(cluster, proxy, hosts);
       this._triggerExceptionPoint();
+      hosts = result.hosts;
+      let shares = result.shares;
 
       await this._updateScsiHosts(cluster, proxy);
       this._triggerExceptionPoint();
