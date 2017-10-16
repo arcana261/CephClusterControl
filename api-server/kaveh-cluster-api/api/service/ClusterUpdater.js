@@ -69,11 +69,27 @@ class ClusterUpdater {
   /**
    * @param {ClusterModel} cluster
    * @param {Proxy} proxy
+   * @param {Array.<HostModel>} hosts
    * @returns {Promise.<void>}
-   * @private
    */
-  async _updateScsiTargets(cluster, proxy) {
-    const actualTargets = await proxy.iscsi.ls();
+  async updateScsiTargets(cluster, proxy, hosts) {
+    const filteredHosts = await (restified.autocommit(async t => {
+      return (await Promise.all(hosts.map(async host => {
+        const types = host.RpcTypes || (await host.getRpcTypes({transaction: t}));
+        return [host, types.some(type => type.name === 'iscsi')];
+      }))).map(([host, isSamba]) => isSamba ? host : null).filter(host => host !== null);
+    }))();
+
+    const actualTargets = (await Promise.all(filteredHosts.map(async host => {
+      try {
+        return await proxy.iscsi.ls({host: host.hostName, timeout: ExtendedTimeout});
+      }
+      catch (err) {
+        host.status = HostStatus.down;
+        return [];
+      }
+    }))).reduce((prev, cur) => prev.concat(cur), []);
+
     this._triggerExceptionPoint();
 
     const fn = restified.autocommit(async t => {
@@ -215,11 +231,28 @@ class ClusterUpdater {
   /**
    * @param {ClusterModel} cluster
    * @param {Proxy} proxy
-   * @returns {Promise.<void>}
+   * @param {Array.<HostModel>} hosts
+   * @returns {Promise.<Array.<HostModel>>}
    * @private
    */
-  async _updateScsiHosts(cluster, proxy) {
-    const actualHosts = await proxy.iscsi.hosts({timeout: ExtendedTimeout});
+  async _updateScsiHosts(cluster, proxy, hosts) {
+    const filteredHosts = await (restified.autocommit(async t => {
+      return (await Promise.all(hosts.map(async host => {
+        const types = host.RpcTypes || (await host.getRpcTypes({transaction: t}));
+        return [host, types.some(type => type.name === 'iscsi')];
+      }))).map(([host, isSamba]) => isSamba ? host : null).filter(host => host !== null);
+    }))();
+
+    const actualHosts = (await Promise.all(filteredHosts.map(async host => {
+      try {
+        return await proxy.iscsi.report(host.hostName, {timeout: ExtendedTimeout});
+      }
+      catch (err) {
+        host.status = HostStatus.down;
+        return null;
+      }
+    }))).filter(x => x !== null);
+
     this._triggerExceptionPoint();
 
     const fn = restified.autocommit(async t => {
@@ -264,6 +297,8 @@ class ClusterUpdater {
     });
 
     await fn();
+
+    return hosts.filter(x => x.status !== HostStatus.down);
   }
 
   /**
@@ -810,10 +845,10 @@ class ClusterUpdater {
       hosts = result.hosts;
       let shares = result.shares;
 
-      await this._updateScsiHosts(cluster, proxy);
+      hosts = await this._updateScsiHosts(cluster, proxy, hosts);
       this._triggerExceptionPoint();
 
-      await this._updateScsiTargets(cluster, proxy);
+      await this.updateScsiTargets(cluster, proxy);
       this._triggerExceptionPoint();
     }
     finally {
