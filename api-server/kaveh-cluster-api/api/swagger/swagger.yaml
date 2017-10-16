@@ -544,6 +544,8 @@ paths:
           required: true
           schema:
             type: object
+            required:
+              - size
             properties:
               size:
                 type: integer
@@ -582,17 +584,20 @@ paths:
           required: true
           schema:
             type: object
+            required:
+              - host
             properties:
               permanent:
                 type: boolean
                 description: whether rbd image should be mounted permanently (surviving reboot)
+                default: false
               host:
                 type: string
                 description: target VM to mount on. it is optional, if not specified one will be picked automatically.
-                default: ''
               readOnly:
                 type: boolean
                 description: can be used to mount image as readonly
+                default: false
       responses:
         200:
           description: indicates image was mounted successfuly
@@ -614,11 +619,6 @@ paths:
       tags:
         - RBD
       parameters:
-        - name: host
-          in: query
-          description: optionally unmount rbd image from a specific host
-          required: false
-          type: string
         - name: force
           in: query
           description: forcefully unmount if necessary

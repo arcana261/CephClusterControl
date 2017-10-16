@@ -568,7 +568,7 @@ async function main() {
       showmapped: async (argv, proxy) => {
         patience();
 
-        const result = await proxy.rbd.getMapped({host: argv.host, id: argv.id});
+        const result = await proxy.rbd.getMapped({host: argv.host, id: argv.id, timeout: -1});
 
         TablePrinter.print(result, [{key: 'Host', value: x => x.hostname},
           {key: 'Image', value: x => x.image}, {key: 'Id', value: x => `${x.rbdId}`},

@@ -4,6 +4,7 @@ const HostStatus = require('../api/const/HostStatus');
 
 /**
  * @typedef {object} HostModel
+ * @property {number} id
  * @property {string} hostName
  * @property {string} version
  * @property {string} ipList
@@ -11,6 +12,8 @@ const HostStatus = require('../api/const/HostStatus');
  * @property {boolean} distro_ubuntu
  * @property {string} distro_version
  * @property {string} status
+ * @property {ClusterModel} Cluster
+ * @property {Array.<RpcType>} RpcTypes
  */
 
 module.exports = (sequelize, DataTypes) => {

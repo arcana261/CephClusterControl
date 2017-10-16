@@ -238,14 +238,14 @@ async function extendScsiTargetCapacity(req, res) {
 
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
-      const actualTarget = await proxy.iscsi.extend(targetName, size);
+      await proxy.iscsi.extend(targetName, size);
 
       const info = await Retry.run(async () => {
         return await proxy.rbd.info({
           image: rbdImage.image,
           pool: rbdImage.pool,
           host: scsiHost.Host.hostName,
-          timeout: 10000
+          timeout: 30000
         });
       }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
 

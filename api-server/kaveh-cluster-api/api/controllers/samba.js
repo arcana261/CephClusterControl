@@ -182,7 +182,7 @@ async function extendSambaShare(req, res) {
           image: rbdImage.image,
           pool: rbdImage.pool,
           host: host.hostName,
-          timeout: 10000
+          timeout: 30000
         });
       }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
 

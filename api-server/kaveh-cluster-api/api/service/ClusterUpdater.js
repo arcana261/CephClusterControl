@@ -12,6 +12,10 @@ const SequentialAsyncMap = require('../../../../lib/utils/SequentialAsyncMap');
 const ScsiHostStatus = require('../const/ScsiHostStatus');
 const ScsiTargetStatus = require('../const/ScsiTargetStatus');
 const ScsiLunStatus = require('../const/ScsiLunStatus');
+const config = require('../../config');
+const Retry = require('../../../../lib/utils/Retry');
+const logger = require('logging').default('ClusterUpdater');
+const ErrorFormatter = require('../../../../lib/utils/ErrorFormatter');
 
 const {
   Cluster,
@@ -21,14 +25,20 @@ const {
   ScsiHost, ScsiTarget, ScsiLun
 } = require('../../models');
 
+const ExtendedTimeout = 60000;
+
 class ClusterUpdater {
   /**
    * @param {string} clusterName
-   * @param {CancelationPoint} cancelationPoint
+   * @param {CancelationPoint|null} cancelationPoint
    */
-  constructor(clusterName, cancelationPoint) {
+  constructor(clusterName, cancelationPoint = null) {
     this._clusterName = clusterName;
     this._cancelationPoint = cancelationPoint;
+  }
+
+  static get ExtendedTimeoutValue() {
+    return ExtendedTimeout;
   }
 
   /**
@@ -48,6 +58,15 @@ class ClusterUpdater {
   }
 
   /**
+   * @private
+   */
+  _triggerExceptionPoint() {
+    if (this._cancelationPoint) {
+      this._cancelationPoint.checkExceptionPoint();
+    }
+  }
+
+  /**
    * @param {ClusterModel} cluster
    * @param {Proxy} proxy
    * @returns {Promise.<void>}
@@ -55,7 +74,7 @@ class ClusterUpdater {
    */
   async _updateScsiTargets(cluster, proxy) {
     const actualTargets = await proxy.iscsi.ls();
-    this._cancelationPoint.checkExceptionPoint();
+    this._triggerExceptionPoint();
 
     const fn = restified.autocommit(async t => {
       const targets = await cluster.getScsiTargets({
@@ -200,8 +219,8 @@ class ClusterUpdater {
    * @private
    */
   async _updateScsiHosts(cluster, proxy) {
-    const actualHosts = await proxy.iscsi.hosts();
-    this._cancelationPoint.checkExceptionPoint();
+    const actualHosts = await proxy.iscsi.hosts({timeout: ExtendedTimeout});
+    this._triggerExceptionPoint();
 
     const fn = restified.autocommit(async t => {
       const scsiHosts = await cluster.getScsiHosts({
@@ -270,7 +289,7 @@ class ClusterUpdater {
    */
   async _updateSambaShares(cluster, proxy) {
     const actualShares = await proxy.samba.ls();
-    this._cancelationPoint.checkExceptionPoint();
+    this._triggerExceptionPoint();
 
     const fn = restified.autocommit(async t => {
       const shares = await cluster.getSambaShares({transaction: t});
@@ -445,7 +464,7 @@ class ClusterUpdater {
       used: used,
       fileSystem: mountPoint ? mountPoint.fileSystem : (actualImage ? actualImage.fileSystem : null),
       isMounted: !!mountPoint,
-      status: actualImage ? RbdImageStatus.up : RbdImageStatus.failed,
+      status: (actualImage || mountPoint) ? RbdImageStatus.up : RbdImageStatus.failed,
       mountPoint_location: mountPoint ? mountPoint.mountPoint : null,
       mountPoint_rbdId: mountPoint ? mountPoint.rbdId : null,
       mountPoint_device: mountPoint ? mountPoint.device : null,
@@ -456,96 +475,170 @@ class ClusterUpdater {
   /**
    * @param {ClusterModel} cluster
    * @param {Proxy} proxy
-   * @returns {Promise.<void>}
+   * @returns {Promise.<Array.<HostModel>>}
    * @private
    */
   async _updateHosts(cluster, proxy) {
     const actualHosts = await proxy.hosts();
-    this._cancelationPoint.checkExceptionPoint();
+    this._triggerExceptionPoint();
 
-    const fn = restified.autocommit(async t => {
-      const hosts = await cluster.getHosts({transaction: t});
-      const rpcTypeCache = {};
+    let hosts = [];
+    const rpcTypeCache = {};
+    let missingHosts = [];
 
-      for (const actualHost of actualHosts) {
-        let host = hosts.filter(x => x.hostName === actualHost.hostname)[0];
+    const updateHost = async (t, actualHost) => {
+      let host = hosts.filter(x => x.hostName === actualHost.hostname)[0];
 
-        if (!host) {
-          host = await Host.create(this._createHostModel(actualHost), {transaction: t});
-          await cluster.addHost(host, {transaction: t});
-        }
-        else {
-          Object.assign(host, this._createHostModel(actualHost));
-          await host.save({transaction: t});
-        }
-
-        const types = await Promise.all(actualHost.types.map(async type => {
-          if (type in rpcTypeCache) {
-            return rpcTypeCache[type];
-          }
-
-          const [result] = (await RpcType.findOrCreate({
-            where: {
-              name: type
-            },
-            defaults: {
-              name: type
-            },
-            transaction: t
-          }));
-
-          rpcTypeCache[type] = result;
-          return result;
-        }));
-
-        await host.setRpcTypes(types, {transaction: t});
+      if (!host) {
+        host = await Host.create(this._createHostModel(actualHost), {transaction: t});
+        await cluster.addHost(host, {transaction: t});
+      }
+      else {
+        Object.assign(host, this._createHostModel(actualHost));
+        await host.save({transaction: t});
       }
 
-      const missingHosts = hosts.filter(x => !actualHosts.some(y => x.hostName === y.hostname));
+      const types = await Promise.all(actualHost.types.map(async type => {
+        if (type in rpcTypeCache) {
+          return rpcTypeCache[type];
+        }
 
-      for (const host of missingHosts) {
-        await Host.update({
-          status: HostStatus.down
-        }, {
+        const [result] = (await RpcType.findOrCreate({
           where: {
-            hostName: host.hostName
+            name: type
+          },
+          defaults: {
+            name: type
           },
           transaction: t
-        });
+        }));
+
+        rpcTypeCache[type] = result;
+        return result;
+      }));
+
+      await host.setRpcTypes(types, {transaction: t});
+      host.RpcTypes = types;
+    };
+
+    const fn = restified.autocommit(async t => {
+      hosts = await cluster.getHosts({
+        transaction: t
+      });
+
+      for (const actualHost of actualHosts) {
+        await updateHost(t, actualHost);
       }
+
+      missingHosts = hosts.filter(x => !actualHosts.some(y => x.hostName === y.hostname));
     });
 
     await fn();
+
+    const updateHostsAgain = (await Promise.all(missingHosts.map(async host => {
+      try {
+        return await proxy.client.getHostInfo(host.hostName, {timeout: ExtendedTimeout});
+      }
+      catch (err) {
+        return null;
+      }
+    }))).filter(x => x !== null);
+
+    this._triggerExceptionPoint();
+
+    missingHosts = missingHosts.filter(x => !updateHostsAgain.some(y => x.hostName === y.hostname));
+
+    const gn = restified.autocommit(async t => {
+      for (const actualHost of updateHostsAgain) {
+        await updateHost(t, actualHost);
+      }
+
+      for (const host of missingHosts) {
+        Object.assign(host, {
+          status: HostStatus.down
+        });
+
+        await host.save({transaction: t});
+      }
+    });
+
+    await gn();
+
+    return hosts.filter(x => x.status === HostStatus.up);
   }
 
   /**
    * @param {ClusterModel} cluster
    * @param {Proxy} proxy
-   * @returns {Promise.<void>}
-   * @private
+   * @param {Array.<HostModel>} hosts
+   * @param {Array.<string>} imageNames
+   * @returns {Promise.<{
+   * hosts: Array.<HostModel>,
+   * images: Array.<RbdImageModel>
+   * }>}
    */
-  async _updateRbdImages(cluster, proxy) {
-    const actualMountPoints = await proxy.rbd.getMapped();
-    this._cancelationPoint.checkExceptionPoint();
+  async updateRbdImages(cluster, proxy, hosts, {imageNames = []} = []) {
+    const actualMountPoints = (await Promise.all(hosts.map(async host => {
+      try {
+        return await proxy.rbd.getMapped({host: host.hostName, timeout: ExtendedTimeout});
+      }
+      catch (err) {
+        host.status = HostStatus.down;
+        return null;
+      }
+    }))).filter(x => x !== null).reduce((prev, cur) => prev.concat(cur), []);
+    this._triggerExceptionPoint();
 
-    const actualImages = await SequentialAsyncMap.map(await proxy.rbd.ls({pool: '*'}),
+    const updatePartially = (imageNames instanceof Array) && imageNames.length > 0;
+
+    const rbdImageNameList = updatePartially ? imageNames :
+      await Retry.run(async () => {
+        return await proxy.rbd.ls({pool: '*'});
+      }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+    this._triggerExceptionPoint();
+
+    const actualImages = await SequentialAsyncMap.map(rbdImageNameList,
       async name => {
        try {
          const parsedName = ImageNameParser.parse(name);
          const mountPoint = actualMountPoints.filter(x => x.image === parsedName.fullName)[0];
-         const targetHost = mountPoint ? mountPoint.hostname : null;
 
-         return [name, await proxy.rbd.info({image: name, host: targetHost})];
+         if (mountPoint) {
+           return [name, {
+             image: parsedName.fullName,
+             size: mountPoint.diskSize,
+             diskSize: mountPoint.diskSize,
+             diskUsed: mountPoint.diskUsed,
+             fileSystem: mountPoint.fileSystem
+           }];
+         }
+         else {
+           const targetHost = mountPoint ? mountPoint.hostname : null;
+           return [name, await proxy.rbd.info({image: name, host: targetHost, timeout: ExtendedTimeout})];
+         }
        }
        catch (err) {
          return [name, null];
        }
       });
-
-    this._cancelationPoint.checkExceptionPoint();
+    this._triggerExceptionPoint();
 
     const fn = restified.autocommit(async t => {
-      const images = await cluster.getRbdImages({transaction: t});
+      const images = updatePartially ?
+        (await Promise.all(imageNames.map(async name => {
+          const parsedName = ImageNameParser.parse(name);
+          return (await cluster.getRbdImages({
+            where: {
+              pool: parsedName.pool,
+              image: parsedName.image
+            },
+            transaction: t,
+            limit: 1,
+            offset: 0
+          }))[0];
+        }))).filter(x => !!x) : await cluster.getRbdImages({transaction: t});
+
+      let result = [];
 
       for (const [imageName, actualImage] of actualImages) {
         const name = ImageNameParser.parse(actualImage ? actualImage.image : imageName);
@@ -557,19 +650,16 @@ class ClusterUpdater {
           await cluster.addRbdImage(image, {transaction: t});
         }
         else {
-          await RbdImage.update(this._createRbdImageModel(name, actualImage, mountPoint, image), {
-            where: {
-              pool: image.pool,
-              image: image.image
-            },
-            transaction: t
-          });
+          Object.assign(image, this._createRbdImageModel(name, actualImage, mountPoint, image));
+          await image.save({transaction: t});
         }
 
+        result.push(image);
         let host = await image.getHost();
 
         if (host && !mountPoint) {
           await image.setHost(null, {transaction: t});
+          image.Host = null;
         }
         else if (!host && mountPoint) {
           host = await Host.findOne({
@@ -586,25 +676,35 @@ class ClusterUpdater {
           });
 
           if (host) {
-            await host.addRbdImage(image, {transaction: t});
+            await image.setHost(host, {transaction: t});
+            image.Host = host;
           }
         }
       }
 
-      const missingImages = images.filter(x => {
-        const name = ImageNameParser.parse(x.image, x.pool);
+      if (!updatePartially) {
+        const missingImages = images.filter(x => {
+          const name = ImageNameParser.parse(x.image, x.pool);
 
-        return !actualImages.some(([imageName, actualImage]) =>
-          ImageNameParser.parse(actualImage ? actualImage.image : imageName).fullName === name.fullName);
-      });
+          return !actualImages.some(([imageName, actualImage]) =>
+            ImageNameParser.parse(actualImage ? actualImage.image : imageName).fullName === name.fullName);
+        });
 
-      for (const missingImage of missingImages) {
-        missingImage.status = RbdImageStatus.missing;
-        await missingImage.save({transaction: t});
+        for (const missingImage of missingImages) {
+          missingImage.status = RbdImageStatus.missing;
+          await missingImage.save({transaction: t});
+        }
       }
+
+      return result;
     });
 
-    await fn();
+    const result = await fn();
+
+    return {
+      hosts: hosts.filter(host => host.status !== HostStatus.down),
+      images: result
+    };
   }
 
   /**
@@ -615,7 +715,7 @@ class ClusterUpdater {
   }
 
   async run() {
-    this._cancelationPoint.checkExceptionPoint();
+    this._triggerExceptionPoint();
 
     const cluster = await Cluster.findOne({
       where: {
@@ -637,22 +737,24 @@ class ClusterUpdater {
 
     try {
       const proxy = new Proxy(client);
-      this._cancelationPoint.checkExceptionPoint();
+      this._triggerExceptionPoint();
 
-      await this._updateHosts(cluster, proxy);
-      this._cancelationPoint.checkExceptionPoint();
+      let hosts = await this._updateHosts(cluster, proxy);
+      this._triggerExceptionPoint();
 
-      await this._updateRbdImages(cluster, proxy);
-      this._cancelationPoint.checkExceptionPoint();
+      let result= await this.updateRbdImages(cluster, proxy, hosts);
+      this._triggerExceptionPoint();
+      hosts = result.hosts;
+      let images = result.images;
 
       await this._updateSambaShares(cluster, proxy);
-      this._cancelationPoint.checkExceptionPoint();
+      this._triggerExceptionPoint();
 
       await this._updateScsiHosts(cluster, proxy);
-      this._cancelationPoint.checkExceptionPoint();
+      this._triggerExceptionPoint();
 
       await this._updateScsiTargets(cluster, proxy);
-      this._cancelationPoint.checkExceptionPoint();
+      this._triggerExceptionPoint();
     }
     finally {
       await client.stop();
