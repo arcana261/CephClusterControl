@@ -79,7 +79,12 @@ module.exports = restified.make({
   /**
    * POST /cluster/{clusterName}/iscsi/{targetName}/lun
    */
-  addScsiTargetLun: addScsiTargetLun
+  addScsiTargetLun: addScsiTargetLun,
+
+  /**
+   * DELETE /cluster/{clusterName}/iscsi/{targetName}/lun
+   */
+  deleteScsiTargetLun: deleteScsiTargetLun
 });
 
 /**
@@ -201,6 +206,84 @@ async function formatScsiHost(t, cluster, scsiHost) {
   };
 }
 
+async function deleteScsiTargetLun(req, res) {
+  const {
+    clusterName: {value: clusterName},
+    targetName: {value: targetName},
+    lun: {value: {
+      index: index,
+      destroyData: destroyData = false
+    }}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found in cluster "${clusterName}"`);
+  }
+
+  let scsiHost = null;
+
+  const preconditionChecker = restified.autocommit(async t => {
+    const [target] = await cluster.getScsiTargets({
+      where: {
+        name: targetName
+      },
+      include: [{
+        model: ScsiHost,
+        include: [{
+          model: Host
+        }]
+      }],
+      limit: 1,
+      offset: 0,
+      transaction: t
+    });
+
+    if (!target) {
+      throw new except.NotFoundError(`target "${targetName}" not found in cluster "${clusterName}"`);
+    }
+
+    scsiHost = target.ScsiHost;
+
+    if (!scsiHost || !scsiHost.Host) {
+      throw new except.NotFoundError(`target "${targetName}" is missing in cluster "${clusterName}"`);
+    }
+  });
+
+  await preconditionChecker();
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      await proxy.iscsi.removeLun(targetName, index, {
+        host: scsiHost.Host.hostName,
+        timeout: ClusterUpdater.ExtendedTimeoutValue,
+        usage: false,
+        destroyData: destroyData
+      });
+
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateScsiTargets(cluster, proxy, [scsiHost.Host], {
+        targets: [targetName]
+      });
+
+      const gn = restified.autocommit(async t => {
+        return await formatScsiTarget(t, cluster, result.targets[0]);
+      });
+
+      return await gn();
+    });
+
+    return await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
+}
+
 async function addScsiTargetLun(req, res) {
   const {
     clusterName: {value: clusterName},
@@ -255,7 +338,8 @@ async function addScsiTargetLun(req, res) {
     const fn = cluster.autoclose(async proxy => {
       await proxy.iscsi.addLun(targetName, size, {
         host: scsiHost.Host.hostName,
-        timeout: ClusterUpdater.ExtendedTimeoutValue
+        timeout: ClusterUpdater.ExtendedTimeoutValue,
+        usage: false
       });
 
       const updater = new ClusterUpdater(clusterName);
@@ -338,7 +422,8 @@ async function extendScsiTargetCapacity(req, res) {
     const fn = cluster.autoclose(async proxy => {
       await proxy.iscsi.extend(targetName, size, {
         host: scsiHost.Host.hostName,
-        timeout: ClusterUpdater.ExtendedTimeoutValue
+        timeout: ClusterUpdater.ExtendedTimeoutValue,
+        usage: false
       });
 
       const parsedName = ImageNameParser.parse(rbdImage.image, rbdImage.pool);
@@ -414,7 +499,8 @@ async function deleteScsiTargetAuthentication(req, res) {
     const fn = cluster.autoclose(async proxy => {
       const actualTarget = await proxy.iscsi.disableAuthentication(targetName, {
         host: scsiHost.Host.hostName,
-        timeout: ClusterUpdater.ExtendedTimeoutValue
+        timeout: ClusterUpdater.ExtendedTimeoutValue,
+        usage: false
       });
 
       const updater = new ClusterUpdater(clusterName);
@@ -489,7 +575,8 @@ async function setScsiTargetAuthentication(req, res) {
     const fn = cluster.autoclose(async proxy => {
       const actualTarget = await proxy.iscsi.enableAuthentication(targetName, password, {
         host: scsiHost.Host.hostName,
-        timeout: ClusterUpdater.ExtendedTimeoutValue
+        timeout: ClusterUpdater.ExtendedTimeoutValue,
+        usage: false
       });
 
       const updater = new ClusterUpdater(clusterName);
@@ -638,7 +725,10 @@ async function updateScsiPortalAuthentication(req, res) {
 async function deleteScsiTarget(req, res) {
   const {
     clusterName: {value: clusterName},
-    targetName: {value: targetName}
+    targetName: {value: targetName},
+    remove: {value: {
+      destroyData: destroyData = false
+    }}
   } = req.swagger.params;
 
   const cluster = await Cluster.findOne({
@@ -651,11 +741,19 @@ async function deleteScsiTarget(req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found in cluster "${clusterName}"`);
   }
 
+  let scsiHost = null;
+
   const preconditionChecker = restified.autocommit(async t => {
     const [target] = await cluster.getScsiTargets({
       where: {
         name: targetName
       },
+      include: [{
+        model: ScsiHost,
+        include: [{
+          model: Host
+        }]
+      }],
       limit: 1,
       offset: 0,
       transaction: t
@@ -664,13 +762,23 @@ async function deleteScsiTarget(req, res) {
     if (!target) {
       throw new except.NotFoundError(`iscsi target "${targetName}" not found in cluster "${clusterName}"`);
     }
+
+    scsiHost = target.ScsiHost;
+
+    if (!scsiHost || !scsiHost.Host) {
+      throw new except.NotFoundError(`target "${targetName}" is missing in cluster "${clusterName}"`);
+    }
   });
 
   await preconditionChecker();
 
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
-      await proxy.iscsi.del(targetName, false);
+      await proxy.iscsi.del(targetName, destroyData, {
+        host: scsiHost.Host.hostName,
+        timeout: ClusterUpdater.ExtendedTimeoutValue,
+        usage: false
+      });
 
       const gn = restified.autocommit(async t => {
         const [target] = await cluster.getScsiTargets({
@@ -823,7 +931,8 @@ async function addScsiTarget(req, res) {
         domain: domain,
         image: image,
         pool: pool,
-        size: size
+        size: size,
+        usage: false
       });
 
       const updater = new ClusterUpdater(clusterName);

@@ -1498,6 +1498,18 @@ paths:
         - basic: []
       tags:
         - iSCSI
+      parameters:
+        - name: remove
+          in: body
+          description: information about how to remove data
+          required: true
+          schema:
+            type: object
+            properties:
+              destroyData:
+                type: boolean
+                description: whether to delete all data, this is irreversible
+                default: false
       responses:
         200:
           description: indicates iscsi target was deleted
@@ -1624,6 +1636,46 @@ paths:
       responses:
         200:
           description: means that new LUN was created
+          schema:
+            $ref: '#/definitions/IScsiTarget'
+        400:
+          $ref: '#/responses/BadRequest'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    delete:
+      summary: deleteScsiTargetLun
+      description: used for deleting an LUN from iscsi target
+      operationId: deleteScsiTargetLun
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+      parameters:
+        - name: lun
+          in: body
+          description: indicates which lun to delete
+          required: true
+          schema:
+            type: object
+            required:
+              - index
+            properties:
+              index:
+                type: integer
+                description: index of lun to delete
+                minimum: 0
+              destroyData:
+                type: boolean
+                description: whether to destroy data as well (this is irreversible)
+                default: false
+      responses:
+        200:
+          description: means that LUN was successfuly deleted
+          schema:
+            $ref: '#/definitions/IScsiTarget'
         400:
           $ref: '#/responses/BadRequest'
         404:

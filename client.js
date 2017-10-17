@@ -127,6 +127,11 @@ function printIScsiTable(shares) {
     }
   });
 
+  // code below tolerates old iscsi monitoring
+  // service implementations.
+  //
+  // old server did not return "items" but just
+  // an array of sizes.
   let lunItems = target => {
     if ('items' in target.luns) {
       return target.luns.items;

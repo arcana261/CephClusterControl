@@ -200,16 +200,57 @@ class ClusterUpdater {
           let i = 0;
           let j = 0;
 
-          while (i < luns.length && j < actualTarget.luns.sizes.length) {
-            Object.assign(luns[i], {
-              size: Math.round(actualTarget.luns.sizes[j]),
-              status: ScsiLunStatus.up
-            });
+          let actualLunItems = null;
 
-            await luns[i].save({transaction: t});
+          // code below tolerates old iscsi monitoring
+          // service implementations.
+          //
+          // old server did not return "items" but just
+          // an array of sizes.
+          if ('items' in actualTarget.luns) {
+            actualLunItems = actualTarget.luns.items;
+          }
+          else {
+            actualLunItems = actualTarget.luns.sizes.map((x, i) => ({
+              index: i,
+              size: x
+            }));
+          }
 
-            i = i + 1;
-            j = j + 1;
+          while (i < luns.length && j < actualLunItems.length) {
+            const lun = luns[i];
+            const actualLun = actualLunItems[j];
+
+            if (lun.index === actualLun.index) {
+              Object.assign(lun, {
+                size: Math.round(actualLun.size)
+              });
+
+              await lun.save({transaction: t});
+
+              i = i + 1;
+              j = j + 1;
+            }
+            else if (lun.index < actualLun.index) {
+              Object.assign(lun, {
+                status: ScsiLunStatus.missing
+              });
+
+              await lun.save({transaction: t});
+
+              i = i + 1;
+            }
+            else {
+              const newLun = await ScsiLun.create({
+                size: Math.round(actualLun.size),
+                status: ScsiLunStatus.up,
+                index: actualLun.index
+              });
+
+              await newLun.setScsiTarget(target, {transaction: t});
+
+              j = j + 1;
+            }
           }
 
           while (i < luns.length) {
@@ -222,16 +263,15 @@ class ClusterUpdater {
             i = i + 1;
           }
 
-          while (j < actualTarget.luns.sizes.length) {
+          while (j < actualLunItems.length) {
             const newLun = await ScsiLun.create({
-              size: Math.round(actualTarget.luns.sizes[j]),
+              size: Math.round(actualLunItems[j].size),
               status: ScsiLunStatus.up,
-              index: i
+              index: actualLunItems[j].index
             });
 
             await newLun.setScsiTarget(target, {transaction: t});
 
-            i = i + 1;
             j = j + 1;
           }
         }
