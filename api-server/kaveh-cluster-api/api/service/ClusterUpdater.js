@@ -89,8 +89,7 @@ class ClusterUpdater {
 
     let actualTargets = (await Promise.all(filteredHosts.map(async host => {
       try {
-        return await proxy.iscsi.ls({
-          host: host.hostName,
+        return await proxy.iscsi.ls(host.hostName, {
           timeout: ExtendedTimeout,
           usage: false,
           filter: isPartialUpdate ? targets : null
@@ -939,7 +938,9 @@ class ClusterUpdater {
       let hosts = await this._updateHosts(cluster, proxy);
       this._triggerExceptionPoint();
 
-      let result = await this.updateRbdImages(cluster, proxy, hosts);
+      let result = null;
+
+      result = await this.updateRbdImages(cluster, proxy, hosts);
       this._triggerExceptionPoint();
       hosts = result.hosts;
       let images = result.images;

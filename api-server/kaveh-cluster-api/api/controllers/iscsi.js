@@ -259,12 +259,19 @@ async function deleteScsiTargetLun(req, res) {
 
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
-      await proxy.iscsi.removeLun(targetName, index, {
-        host: scsiHost.Host.hostName,
-        timeout: ClusterUpdater.ExtendedTimeoutValue,
-        usage: false,
-        destroyData: destroyData
-      });
+      try {
+        await proxy.iscsi.removeLun(targetName, index, {
+          host: scsiHost.Host.hostName,
+          timeout: ClusterUpdater.ExtendedTimeoutValue,
+          usage: false,
+          destroyData: destroyData
+        });
+      }
+      catch (err) {
+        if (ErrorFormatter.format(err).indexOf('is out of range') < 0) {
+          throw err;
+        }
+      }
 
       const updater = new ClusterUpdater(clusterName);
       const result = await updater.updateScsiTargets(cluster, proxy, [scsiHost.Host], {
@@ -774,11 +781,18 @@ async function deleteScsiTarget(req, res) {
 
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
-      await proxy.iscsi.del(targetName, destroyData, {
-        host: scsiHost.Host.hostName,
-        timeout: ClusterUpdater.ExtendedTimeoutValue,
-        usage: false
-      });
+      try {
+        await proxy.iscsi.del(targetName, destroyData, {
+          host: scsiHost.Host.hostName,
+          timeout: ClusterUpdater.ExtendedTimeoutValue,
+          usage: false
+        });
+      }
+      catch (err) {
+        if (ErrorFormatter.format(err).indexOf('target not found') < 0) {
+          throw err;
+        }
+      }
 
       const gn = restified.autocommit(async t => {
         const [target] = await cluster.getScsiTargets({
