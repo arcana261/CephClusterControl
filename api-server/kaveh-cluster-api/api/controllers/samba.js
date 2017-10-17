@@ -88,6 +88,10 @@ module.exports = restified.make({
  * @param {SambaShareModel} share
  */
 async function formatSambaShare(t, cluster, share) {
+  if (!share) {
+    throw new except.NotFoundError(`share not found in cluster "${cluster.name}"`);
+  }
+
   const image = share.RbdImage || (await share.getRbdImage({transaction: t}));
   const host = share.Host || (await share.getHost({transaction: t}));
   const aclList = await share.getSambaAcls({

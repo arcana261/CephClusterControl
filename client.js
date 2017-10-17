@@ -127,15 +127,28 @@ function printIScsiTable(shares) {
     }
   });
 
+  let lunItems = target => {
+    if ('items' in target.luns) {
+      return target.luns.items;
+    }
+    else {
+      return target.luns.sizes.map((x, i) => ({
+        index: i,
+        size: x
+      }));
+    }
+  };
+
   TablePrinter.print(shares, [{key: 'Host', value: x => x.host !== null ? x.host : ''},
     {key: 'IQN', value: x => x.stringifiedIqn},
     {key: 'Client', value: x => x.authentication !== null ? x.authentication.userId : ''},
     {key: 'Password', value: x => x.authentication !== null ? x.authentication.password : ''},
-    {key: 'LUNs', value: x => x.luns !== null ? x.luns.sizes.map(y => SizeParser.stringify(y)) : ''},
+    {key: 'LUNs', value: x => x.luns !== null ? lunItems(x).map(y => SizeParser.stringify(y.size)) : ''},
     {key: 'Image', value: x => x.luns !== null ? ImageNameParser.parse(x.luns.image, x.luns.pool).fullName : ''},
     {key: 'Capacity', value: x => x.luns !== null ? SizeParser.stringify(x.luns.capacity) : '0'},
     {key: 'Used', value: x => x.luns !== null ? SizeParser.stringify(x.luns.used) : '0'},
-    {key: 'Allocated', value: x => x.luns !== null ? SizeParser.stringify(x.luns.sizes.reduce((p, c) => p + c, 0)) : 0}]);
+    {key: 'Allocated', value: x => x.luns !== null ?
+      SizeParser.stringify(lunItems(x).reduce((p, c) => p + c.size, 0)) : 0}]);
 
   console.log();
 }

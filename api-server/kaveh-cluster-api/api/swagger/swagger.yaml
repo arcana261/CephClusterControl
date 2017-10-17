@@ -1614,7 +1614,13 @@ paths:
           description: size of LUN in MB (megabytes)
           required: true
           schema:
-            type: integer
+            type: object
+            required:
+              - size
+            properties:
+              size:
+                type: integer
+                minimum: 100
       responses:
         200:
           description: means that new LUN was created

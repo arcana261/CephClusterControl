@@ -70,19 +70,31 @@ class ClusterUpdater {
    * @param {ClusterModel} cluster
    * @param {Proxy} proxy
    * @param {Array.<HostModel>} hosts
-   * @returns {Promise.<void>}
+   * @param {Array.<string>} targets
+   * @returns {Promise.<{
+   * hosts: Array.<HostModel>,
+   * targets: Array.<ScsiTargetModel>
+   * }>}
    */
-  async updateScsiTargets(cluster, proxy, hosts) {
+  async updateScsiTargets(cluster, proxy, hosts, {targets = []} = {}) {
     const filteredHosts = await (restified.autocommit(async t => {
       return (await Promise.all(hosts.map(async host => {
         const types = host.RpcTypes || (await host.getRpcTypes({transaction: t}));
+        host.RpcTypes = types;
         return [host, types.some(type => type.name === 'iscsi')];
       }))).map(([host, isSamba]) => isSamba ? host : null).filter(host => host !== null);
     }))();
 
-    const actualTargets = (await Promise.all(filteredHosts.map(async host => {
+    const isPartialUpdate = (targets instanceof Array) && targets.length > 0;
+
+    let actualTargets = (await Promise.all(filteredHosts.map(async host => {
       try {
-        return await proxy.iscsi.ls({host: host.hostName, timeout: ExtendedTimeout});
+        return await proxy.iscsi.ls({
+          host: host.hostName,
+          timeout: ExtendedTimeout,
+          usage: false,
+          filter: isPartialUpdate ? targets : null
+        });
       }
       catch (err) {
         host.status = HostStatus.down;
@@ -90,12 +102,27 @@ class ClusterUpdater {
       }
     }))).reduce((prev, cur) => prev.concat(cur), []);
 
+    if (isPartialUpdate) {
+      actualTargets = actualTargets.filter(target => targets.indexOf(target.iqn.name) >= 0);
+    }
+
     this._triggerExceptionPoint();
 
     const fn = restified.autocommit(async t => {
-      const targets = await cluster.getScsiTargets({
-        transaction: t
-      });
+      const targets =
+        isPartialUpdate ?
+          (await Promise.all(targets.map(async targetName => {
+            return (await cluster.getScsiTargets({
+              where: {
+                name: targetName
+              },
+              limit: 1,
+              offset: 0,
+              transaction: t
+            }))[0];
+          }))).filter(x => !!x) : (await cluster.getScsiTargets({transaction: t}));
+
+      let result = [];
 
       for (const actualTarget of actualTargets) {
         let [target] = targets.filter(x => x.iqn === actualTarget.stringifiedIqn);
@@ -108,6 +135,8 @@ class ClusterUpdater {
           target = await ScsiTarget.create(this._createScsiTargetModel(actualTarget), {transaction: t});
           await target.setCluster(cluster, {transaction: t});
         }
+
+        result.push(target);
 
         let host = await target.getScsiHost({
           include: [{
@@ -154,7 +183,12 @@ class ClusterUpdater {
           }
         }
 
-        const luns = await target.getScsiLuns({transaction: t});
+        const luns = await target.getScsiLuns({
+          transaction: t,
+          order: [
+            ['index', 'ASC']
+          ]
+        });
 
         if (!actualTarget.luns) {
           for (const lun of luns) {
@@ -203,15 +237,24 @@ class ClusterUpdater {
         }
       }
 
-      const missingTargets = targets.filter(x => !actualTargets.some(y => x.iqn === y.stringifiedIqn));
+      if (!isPartialUpdate) {
+        const missingTargets = targets.filter(x => !actualTargets.some(y => x.iqn === y.stringifiedIqn));
 
-      for (const missingTarget of missingTargets) {
-        Object.assign(missingTarget, {status: ScsiTargetStatus.missing});
-        await missingTarget.save({transaction: t});
+        for (const missingTarget of missingTargets) {
+          Object.assign(missingTarget, {status: ScsiTargetStatus.missing});
+          await missingTarget.save({transaction: t});
+        }
       }
+
+      return result;
     });
 
-    await fn();
+    const result = await fn();
+
+    return {
+      hosts: hosts.filter(x => x.status !== HostStatus.down),
+      targets: result
+    };
   }
 
   /**
@@ -232,13 +275,17 @@ class ClusterUpdater {
    * @param {ClusterModel} cluster
    * @param {Proxy} proxy
    * @param {Array.<HostModel>} hosts
-   * @returns {Promise.<Array.<HostModel>>}
-   * @private
+   * @param {boolean} isPartialUpdate
+   * @returns {Promise.<{
+   * hosts: Array.<HostModel>,
+   * scsiHosts: Array.<ScsiHostModel>
+   * }>}
    */
-  async _updateScsiHosts(cluster, proxy, hosts) {
+  async updateScsiHosts(cluster, proxy, hosts, {isPartialUpdate = false} = {}) {
     const filteredHosts = await (restified.autocommit(async t => {
       return (await Promise.all(hosts.map(async host => {
         const types = host.RpcTypes || (await host.getRpcTypes({transaction: t}));
+        host.RpcTypes = types;
         return [host, types.some(type => type.name === 'iscsi')];
       }))).map(([host, isSamba]) => isSamba ? host : null).filter(host => host !== null);
     }))();
@@ -256,12 +303,17 @@ class ClusterUpdater {
     this._triggerExceptionPoint();
 
     const fn = restified.autocommit(async t => {
-      const scsiHosts = await cluster.getScsiHosts({
-        include: [{
-          model: Host
-        }],
-        transaction: t
-      });
+      const scsiHosts = isPartialUpdate ?
+        (await Promise.all(filteredHosts.map(host =>
+          host.getScsiHost({transaction: t})))).filter(x => !!x) :
+        await cluster.getScsiHosts({
+          include: [{
+            model: Host
+          }],
+          transaction: t
+        });
+
+      let result = [];
 
       for (const actualHost of actualHosts) {
         let [scsiHost] = scsiHosts.filter(x => x.Host.hostName === actualHost.hostname);
@@ -286,19 +338,30 @@ class ClusterUpdater {
             await scsiHost.setCluster(cluster, {transaction: t});
           }
         }
+
+        if (scsiHost) {
+          result.push(scsiHost);
+        }
       }
 
-      const missingScsiHosts = scsiHosts.filter(x => !x.Host || !actualHosts.some(y => x.Host.hostName === y.hostname));
+      if (!isPartialUpdate) {
+        const missingScsiHosts = scsiHosts.filter(x => !x.Host || !actualHosts.some(y => x.Host.hostName === y.hostname));
 
-      for (const missingScsiHost of missingScsiHosts) {
-        Object.assign(missingScsiHost, {status: ScsiHostStatus.missing});
-        await missingScsiHost.save({transaction: t});
+        for (const missingScsiHost of missingScsiHosts) {
+          Object.assign(missingScsiHost, {status: ScsiHostStatus.missing});
+          await missingScsiHost.save({transaction: t});
+        }
       }
+
+      return result;
     });
 
-    await fn();
+    const result = await fn();
 
-    return hosts.filter(x => x.status !== HostStatus.down);
+    return {
+      hosts: hosts.filter(x => x.status !== HostStatus.down),
+      scsiHosts: result
+    };
   }
 
   /**
@@ -330,6 +393,7 @@ class ClusterUpdater {
     const filteredHosts = await (restified.autocommit(async t => {
       return (await Promise.all(hosts.map(async host => {
         const types = host.RpcTypes || (await host.getRpcTypes({transaction: t}));
+        host.RpcTypes = types;
         return [host, types.some(type => type.name === 'samba')];
       }))).map(([host, isSamba]) => isSamba ? host : null).filter(host => host !== null);
     }))();
@@ -845,11 +909,15 @@ class ClusterUpdater {
       hosts = result.hosts;
       let shares = result.shares;
 
-      hosts = await this._updateScsiHosts(cluster, proxy, hosts);
+      result = await this.updateScsiHosts(cluster, proxy, hosts);
       this._triggerExceptionPoint();
+      hosts = result.hosts;
+      let scsiHosts = result.scsiHosts;
 
-      await this.updateScsiTargets(cluster, proxy);
+      result = await this.updateScsiTargets(cluster, proxy, hosts);
       this._triggerExceptionPoint();
+      hosts = result.hosts;
+      let targets = result.targets;
     }
     finally {
       await client.stop();

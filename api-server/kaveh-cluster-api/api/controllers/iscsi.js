@@ -10,6 +10,8 @@ const config = require('../../config');
 const logger = require('logging').default('IScsiController');
 const ScsiTargetStatus = require('../const/ScsiTargetStatus');
 const ScsiLunStatus = require('../const/ScsiLunStatus');
+const ClusterUpdater = require('../service/ClusterUpdater');
+const ImageNameParser = require('../../../../lib/utils/ImageNameParser');
 
 const {
   Cluster,
@@ -72,7 +74,12 @@ module.exports = restified.make({
   /**
    * PATCH /cluster/{clusterName}/iscsi/{targetName}/capacity
    */
-  extendScsiTargetCapacity: extendScsiTargetCapacity
+  extendScsiTargetCapacity: extendScsiTargetCapacity,
+
+  /**
+   * POST /cluster/{clusterName}/iscsi/{targetName}/lun
+   */
+  addScsiTargetLun: addScsiTargetLun
 });
 
 /**
@@ -82,6 +89,10 @@ module.exports = restified.make({
  * @returns {Promise.<*>}
  */
 async function formatScsiTarget(t, cluster, target) {
+  if (!target) {
+    throw new except.NotFoundError(`target not found in cluster "${cluster.name}"`);
+  }
+
   const luns = target.ScsiLuns || (await target.getScsiLuns({transaction: t}));
   const rbdImage = target.RbdImage || (await target.getRbdImage({transaction: t}));
   const scsiHost = target.ScsiHost || (await target.getScsiHost({
@@ -145,6 +156,10 @@ async function formatScsiTarget(t, cluster, target) {
  * @returns {Promise.<*>}
  */
 async function formatScsiHost(t, cluster, scsiHost) {
+  if (!scsiHost) {
+    throw new except.NotFoundError(`scsi host not found in cluster "${cluster.name}"`);
+  }
+
   const host = scsiHost.Host || (await scsiHost.getHost({transaction: t}));
   const rpcTypes = host ? (host.RpcTypes || (await host.getRpcTypes({transaction: t}))) : [];
 
@@ -184,6 +199,81 @@ async function formatScsiHost(t, cluster, scsiHost) {
       status: HostStatus.up
     }
   };
+}
+
+async function addScsiTargetLun(req, res) {
+  const {
+    clusterName: {value: clusterName},
+    targetName: {value: targetName},
+    size: {value: {
+      size: size
+    }}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found in cluster "${clusterName}"`);
+  }
+
+  let scsiHost = null;
+
+  const preconditionChecker = restified.autocommit(async t => {
+    const [target] = await cluster.getScsiTargets({
+      where: {
+        name: targetName
+      },
+      include: [{
+        model: ScsiHost,
+        include: [{
+          model: Host
+        }]
+      }],
+      limit: 1,
+      offset: 0,
+      transaction: t
+    });
+
+    if (!target) {
+      throw new except.NotFoundError(`target "${targetName}" not found in cluster "${clusterName}"`);
+    }
+
+    scsiHost = target.ScsiHost;
+
+    if (!scsiHost || !scsiHost.Host) {
+      throw new except.NotFoundError(`target "${targetName}" is missing in cluster "${clusterName}"`);
+    }
+  });
+
+  await preconditionChecker();
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      await proxy.iscsi.addLun(targetName, size, {
+        host: scsiHost.Host.hostName,
+        timeout: ClusterUpdater.ExtendedTimeoutValue
+      });
+
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateScsiTargets(cluster, proxy, [scsiHost.Host], {
+        targets: [targetName]
+      });
+
+      const gn = restified.autocommit(async t => {
+        return await formatScsiTarget(t, cluster, result.targets[0]);
+      });
+
+      return await gn();
+    });
+
+    return await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function extendScsiTargetCapacity(req, res) {
@@ -232,55 +322,36 @@ async function extendScsiTargetCapacity(req, res) {
 
     rbdImage = target.RbdImage;
     scsiHost = target.ScsiHost;
+
+    if (!rbdImage) {
+      throw new except.NotFoundError(`target "${targetName}" has no associated rbd image in cluster "${clusterName}"`);
+    }
+
+    if (!scsiHost || !scsiHost.Host) {
+      throw new except.NotFoundError(`target "${targetName}" is missing in cluster "${clusterName}"`);
+    }
   });
 
   await preconditionChecker();
 
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
-      await proxy.iscsi.extend(targetName, size);
+      await proxy.iscsi.extend(targetName, size, {
+        host: scsiHost.Host.hostName,
+        timeout: ClusterUpdater.ExtendedTimeoutValue
+      });
 
-      const info = await Retry.run(async () => {
-        return await proxy.rbd.info({
-          image: rbdImage.image,
-          pool: rbdImage.pool,
-          host: scsiHost.Host.hostName,
-          timeout: 30000
-        });
-      }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+      const parsedName = ImageNameParser.parse(rbdImage.image, rbdImage.pool);
+      const updater = new ClusterUpdater(clusterName);
+
+      const rbdResult = await updater.updateRbdImages(cluster, proxy, [scsiHost.Host],
+        {imageNames: [parsedName.fullName]});
+
+      const scsiResult = await updater.updateScsiTargets(cluster, proxy, [scsiHost.Host],
+        {targets: [targetName]});
 
       const gn = restified.make(async t => {
-        Object.assign(rbdImage, {
-          capacity: Math.round(info.diskSize || rbdImage.capacity),
-          used: Math.round(info.diskUsed || rbdImage.used)
-        });
-
-        await rbdImage.save({transaction: t});
-
-        const [target] = await cluster.getScsiTargets({
-          where: {
-            name: targetName
-          },
-          include: [{
-            model: RbdImage
-          }, {
-            model: ScsiLun
-          }, {
-            model: ScsiHost,
-            include: [{
-              model: Host
-            }]
-          }],
-          limit: 1,
-          offset: 0,
-          transaction: t
-        });
-
-        if (!target) {
-          throw new except.NotFoundError(`target "${targetName}" not found in cluster "${clusterName}"`);
-        }
-
-        return await formatScsiTarget(t, cluster, target);
+        return await formatScsiTarget(t, cluster, scsiResult.targets[0]);
       });
 
       return await gn();
@@ -308,11 +379,19 @@ async function deleteScsiTargetAuthentication(req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found in cluster "${clusterName}"`);
   }
 
+  let scsiHost = null;
+
   const preconditionChecker = restified.autocommit(async t => {
     const [target] = await cluster.getScsiTargets({
       where: {
         name: targetName
       },
+      include: [{
+        model: ScsiHost,
+        include: [{
+          model: Host
+        }]
+      }],
       limit: 1,
       offset: 0,
       transaction: t
@@ -321,56 +400,30 @@ async function deleteScsiTargetAuthentication(req, res) {
     if (!target) {
       throw new except.NotFoundError(`target "${targetName}" not found in cluster "${clusterName}"`);
     }
+
+    scsiHost = target.ScsiHost;
+
+    if (!scsiHost || !scsiHost.Host) {
+      throw new except.NotFoundError(`target "${targetName}" is missing in cluster "${clusterName}"`);
+    }
   });
 
   await preconditionChecker();
 
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
-      const actualTarget = await proxy.iscsi.disableAuthentication(targetName);
+      const actualTarget = await proxy.iscsi.disableAuthentication(targetName, {
+        host: scsiHost.Host.hostName,
+        timeout: ClusterUpdater.ExtendedTimeoutValue
+      });
+
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateScsiTargets(cluster, proxy, [scsiHost.Host], {
+        targets: [targetName]
+      });
 
       const gn = restified.autocommit(async t => {
-        const [target] = await cluster.getScsiTargets({
-          where: {
-            name: targetName
-          },
-          include: [{
-            model: RbdImage
-          }, {
-            model: ScsiLun
-          }, {
-            model: ScsiHost,
-            include: [{
-              model: Host
-            }]
-          }],
-          limit: 1,
-          offset: 0,
-          transaction: t
-        });
-
-        if (!target) {
-          throw new except.NotFoundError(`target "${targetName}" not found in cluster "${clusterName}"`);
-        }
-
-        if (actualTarget.authentication) {
-          Object.assign(target, {
-            requiresAuth: true,
-            userName: actualTarget.authentication.userId,
-            password: actualTarget.authentication.password
-          });
-        }
-        else {
-          Object.assign(target, {
-            requiresAuth: false,
-            userName: null,
-            password: null
-          });
-        }
-
-        await target.save({transaction: t});
-
-        return await formatScsiTarget(t, cluster, target);
+        return await formatScsiTarget(t, cluster, result.targets[0]);
       });
 
       return await gn();
@@ -401,11 +454,19 @@ async function setScsiTargetAuthentication(req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found in cluster "${clusterName}"`);
   }
 
+  let scsiHost = null;
+
   const preconditionChecker = restified.autocommit(async t => {
     const [target] = await cluster.getScsiTargets({
       where: {
         name: targetName
       },
+      include: [{
+        model: ScsiHost,
+        include: [{
+          model: Host
+        }]
+      }],
       limit: 1,
       offset: 0,
       transaction: t
@@ -414,56 +475,30 @@ async function setScsiTargetAuthentication(req, res) {
     if (!target) {
       throw new except.NotFoundError(`target "${targetName}" not found in cluster "${clusterName}"`);
     }
+
+    scsiHost = target.ScsiHost;
+
+    if (!scsiHost || !scsiHost.Host) {
+      throw new except.NotFoundError(`target "${targetName}" is missing in cluster "${clusterName}"`);
+    }
   });
 
   await preconditionChecker();
 
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
-      const actualTarget = await proxy.iscsi.enableAuthentication(targetName, password);
+      const actualTarget = await proxy.iscsi.enableAuthentication(targetName, password, {
+        host: scsiHost.Host.hostName,
+        timeout: ClusterUpdater.ExtendedTimeoutValue
+      });
+
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateScsiTargets(cluster, proxy, [scsiHost.Host], {
+        targets: [targetName]
+      });
 
       const gn = restified.autocommit(async t => {
-        const [target] = await cluster.getScsiTargets({
-          where: {
-            name: targetName
-          },
-          include: [{
-            model: RbdImage
-          }, {
-            model: ScsiLun
-          }, {
-            model: ScsiHost,
-            include: [{
-              model: Host
-            }]
-          }],
-          limit: 1,
-          offset: 0,
-          transaction: t
-        });
-
-        if (!target) {
-          throw new except.NotFoundError(`target "${targetName}" not found in cluster "${clusterName}"`);
-        }
-
-        if (actualTarget.authentication) {
-          Object.assign(target, {
-            requiresAuth: true,
-            userName: actualTarget.authentication.userId,
-            password: actualTarget.authentication.password
-          });
-        }
-        else {
-          Object.assign(target, {
-            requiresAuth: false,
-            userName: null,
-            password: null
-          });
-        }
-
-        await target.save({transaction: t});
-
-        return await formatScsiTarget(t, cluster, target);
+        return await formatScsiTarget(t, cluster, result.targets[0]);
       });
 
       return await gn();
@@ -491,8 +526,10 @@ async function deleteScsiPortalAuthentication(req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found in cluster "${clusterName}"`);
   }
 
+  let host = null;
+
   const preconditionChecker = restified.autocommit(async t => {
-    const [host] = await cluster.getScsiHosts({
+    host = (await cluster.getScsiHosts({
       include: [{
         model: Host,
         where: {
@@ -502,7 +539,7 @@ async function deleteScsiPortalAuthentication(req, res) {
       limit: 1,
       offset: 0,
       transaction: t
-    });
+    }))[0];
 
     if (!host) {
       throw new except.NotFoundError(`host "${hostName}" not found in cluster "${clusterName}"`);
@@ -513,52 +550,15 @@ async function deleteScsiPortalAuthentication(req, res) {
 
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
-      await proxy.iscsi.disableDiscoveryAuthentication(hostName);
+      await proxy.iscsi.disableDiscoveryAuthentication(hostName, {timeout: ClusterUpdater.ExtendedTimeoutValue});
 
-      const [actualHost] = (await proxy.iscsi.hosts()).filter(x => x.hostname === hostName);
-
-      if (!actualHost) {
-        throw new except.NotFoundError(`host "${hostName}" not found in cluster "${clusterName}"`);
-      }
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateScsiHosts(cluster, proxy, [host.Host], {
+        isPartialUpdate: true
+      });
 
       const gn = restified.autocommit(async t => {
-        const [host] = await cluster.getScsiHosts({
-          include: [{
-            model: Host,
-            where: {
-              hostName: hostName
-            },
-            include: [{
-              model: RpcType
-            }]
-          }],
-          limit: 1,
-          offset: 0,
-          transaction: t
-        });
-
-        if (!host) {
-          throw new except.NotFoundError(`host "${hostName}" not found in cluster "${clusterName}"`);
-        }
-
-        if (actualHost.discovery) {
-          Object.assign(host, {
-            requiresAuth: true,
-            userName: actualHost.discovery.userId,
-            password: actualHost.discovery.password
-          });
-        }
-        else {
-          Object.assign(host, {
-            requiresAuth: false,
-            userName: null,
-            password: null
-          });
-        }
-
-        await host.save({transaction: t});
-
-        return await formatScsiHost(t, cluster, host);
+        return await formatScsiHost(t, cluster, result.scsiHosts[0]);
       });
 
       return await gn();
@@ -615,53 +615,15 @@ async function updateScsiPortalAuthentication(req, res) {
       await proxy.iscsi.enableDiscoveryAuthentication({
         host: hostName,
         domain: domain,
-        password: password
+        password: password,
+        timeout: ClusterUpdater.ExtendedTimeoutValue
       });
 
-      const [actualHost] = (await proxy.iscsi.hosts()).filter(x => x.hostname === hostName);
-
-      if (!actualHost) {
-        throw new except.NotFoundError(`host "${hostName}" not found in cluster "${clusterName}"`);
-      }
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateScsiHosts(cluster, proxy, [host.Host], {isPartialUpdate: true});
 
       const gn = restified.autocommit(async t => {
-        const [host] = await cluster.getScsiHosts({
-          include: [{
-            model: Host,
-            where: {
-              hostName: hostName
-            },
-            include: [{
-              model: RpcType
-            }]
-          }],
-          limit: 1,
-          offset: 0,
-          transaction: t
-        });
-
-        if (!host) {
-          throw new except.NotFoundError(`host "${hostName}" not found in cluster "${clusterName}"`);
-        }
-
-        if (actualHost.discovery) {
-          Object.assign(host, {
-            requiresAuth: true,
-            userName: actualHost.discovery.userId,
-            password: actualHost.discovery.password
-          });
-        }
-        else {
-          Object.assign(host, {
-            requiresAuth: false,
-            userName: null,
-            password: null
-          });
-        }
-
-        await host.save({transaction: t});
-
-        return await formatScsiHost(t, cluster, host);
+        return await formatScsiHost(t, cluster, result.scsiHosts[0]);
       });
 
       return await gn();
@@ -796,6 +758,8 @@ async function addScsiTarget(req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found in cluster "${clusterName}"`);
   }
 
+  let host = null;
+
   const preconditionChecker = restified.make(async t => {
     const [target] = await cluster.getScsiTargets({
       where: {
@@ -832,7 +796,7 @@ async function addScsiTarget(req, res) {
       throw new except.ConflictError(`rbd image "${pool}/${image}" is already bound to another iscsi share`);
     }
 
-    const [host] = await cluster.getScsiHosts({
+    host = (await cluster.getScsiHosts({
       include: [{
         model: Host,
         where: {
@@ -842,7 +806,7 @@ async function addScsiTarget(req, res) {
       limit: 1,
       offset: 0,
       transaction: t
-    });
+    }))[0];
 
     if (!host) {
       throw new except.NotFoundError(`host "${host}" not found in cluster "${clusterName}"`);
@@ -862,61 +826,13 @@ async function addScsiTarget(req, res) {
         size: size
       });
 
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateScsiTargets(cluster, proxy, [host.Host], {
+        targets: [name]
+      });
+
       const gn = restified.autocommit(async t => {
-        const [rbdImage] = await cluster.getRbdImages({
-          where: {
-            pool: pool,
-            image: image
-          },
-          limit: 1,
-          offset: 0,
-          transaction: t
-        });
-
-        if (!rbdImage) {
-          throw new except.NotFoundError(`rbd image "${pool}/${image}" not found in cluster "${clusterName}"`);
-        }
-
-        const [host] = await cluster.getScsiHosts({
-          include: [{
-            model: Host,
-            where: {
-              hostName: hostName
-            }
-          }],
-          limit: 1,
-          offset: 0,
-          transaction: t
-        });
-
-        if (!host) {
-          throw new except.NotFoundError(`host "${host}" not found in cluster "${clusterName}"`);
-        }
-
-        const target = await ScsiTarget.create({
-          iqn: actualTarget.stringifiedIqn,
-          requiresAuth: !!actualTarget.authentication,
-          userName: actualTarget.authentication ? actualTarget.authentication.userId : null,
-          password: actualTarget.authentication ? actualTarget.authentication.password : null,
-          status: ScsiTargetStatus.up
-        }, {transaction: t});
-
-        await target.setCluster(cluster, {transaction: t});
-        await target.setRbdImage(rbdImage, {transaction: t});
-        await target.setScsiHost(host, {transaction: t});
-
-        if (actualTarget.luns) {
-          for (let i = 0; i < actualTarget.luns.sizes.length; i++) {
-            const newLun = await ScsiLun.create({
-              size: Math.round(actualTarget.luns.sizes[i]),
-              status: ScsiLunStatus.up
-            });
-
-            await newLun.setScsiTarget(target, {transaction: t});
-          }
-        }
-
-        return await formatScsiTarget(t, cluster, target);
+        return await formatScsiTarget(t, cluster, result.targets[0]);
       });
 
       return await gn();
