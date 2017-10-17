@@ -28,12 +28,13 @@ module.exports = (sequelize, DataTypes) => {
     }
   });
 
-  Cluster.associate = function({Host, RbdImage, SambaShare, ScsiHost, ScsiTarget}) {
+  Cluster.associate = function({Host, RbdImage, SambaShare, ScsiHost, ScsiTarget, RadosGatewayShare}) {
     Cluster.hasMany(Host);
     Cluster.hasMany(RbdImage);
     Cluster.hasMany(SambaShare);
     Cluster.hasMany(ScsiHost);
     Cluster.hasMany(ScsiTarget);
+    Cluster.hasMany(RadosGatewayShare);
   };
 
   Cluster.prototype.autoclose = function(fn) {

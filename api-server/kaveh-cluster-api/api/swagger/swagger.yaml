@@ -731,13 +731,19 @@ paths:
       x-required-role: user
       tags:
         - RGW
+      parameters:
+        - $ref: '#/parameters/listStart'
+        - $ref: '#/parameters/listLength'
       responses:
         200:
           description: returns list of RGW shares defined
           schema:
-            type: array
-            items:
-              $ref: '#/definitions/RadosGatewayShare'
+            type: object
+            properties:
+              result:
+                type: array
+                items:
+                  $ref: '#/definitions/RadosGatewayShare'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -755,12 +761,28 @@ paths:
         - name: share
           in: body
           description: new share to create
-          schema:
-            $ref: '#/definitions/RadosGatewayShare'
           required: true
+          schema:
+            type: object
+            required:
+              - userName
+              - fullName
+              - email
+            properties:
+              userName:
+                type: string
+                description: name of rgw share
+              fullName:
+                type: string
+                description: fullname of person holding share
+              email:
+                type: string
+                description: email of person holding share
       responses:
         200:
           description: indicates new share was created
+          schema:
+            $ref: '#/definitions/RadosGatewayShare'
         409:
           $ref: '#/responses/Conflict'
         404:
@@ -2276,7 +2298,12 @@ definitions:
       - userName
       - fullName
       - email
+      - accessKey
+      - secretKey
+      - hasQuota
+      - capacity
       - used
+      - status
     properties:
       userName:
         type: string
@@ -2293,12 +2320,21 @@ definitions:
       secretKey:
         type: string
         description: S3 secret key
+      hasQuota:
+        type: boolean
+        description: whether quota is enabled for share
       capacity:
         type: integer
         description: capacity quota of user in MB (megabytes)
       used:
         type: integer
         description: usage of quota of user in MB (megabytes)
+      status:
+        type: string
+        description: whether rgw share is healthy or not
+        enum:
+          - up
+          - missing
   RbdFileSystem:
     type: string
     description: shows compatible filesystem used for rbd images

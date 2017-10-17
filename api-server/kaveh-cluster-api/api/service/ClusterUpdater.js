@@ -16,13 +16,16 @@ const config = require('../../config');
 const Retry = require('../../../../lib/utils/Retry');
 const logger = require('logging').default('ClusterUpdater');
 const ErrorFormatter = require('../../../../lib/utils/ErrorFormatter');
+const types = require('../helpers/types');
+const RadosGatewayShareStatus = require('../const/RadosGatewayShareStatus');
 
 const {
   Cluster,
   Host, RpcType,
   RbdImage,
   SambaUser, SambaAcl, SambaShare,
-  ScsiHost, ScsiTarget, ScsiLun
+  ScsiHost, ScsiTarget, ScsiLun,
+  RadosGatewayShare
 } = require('../../models');
 
 const ExtendedTimeout = 60000;
@@ -406,6 +409,111 @@ class ClusterUpdater {
       hosts: hosts.filter(x => x.status !== HostStatus.down),
       scsiHosts: result
     };
+  }
+
+  _fixString(str) {
+    if (!str || !types.isString(str)) {
+      return '';
+    }
+
+    let result = '';
+
+    for (let i = 0; i < str.length; i++) {
+      const ch = str.charAt(i);
+
+      if (/\w/.test(ch) || /\s/.test(ch) || /\d/.test(ch) || /[!@#$%^&*().,?/\\:;'"~`\-_=+|]/.test(ch)) {
+        result = result + ch;
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * @param {RadosGatewayUser} actualShare
+   * @returns {RadosGatewayShareModel}
+   * @private
+   */
+  _createRadosGatewayShareModel(actualShare) {
+    return {
+      userName: actualShare.username,
+      fullName: this._fixString(actualShare.fullName),
+      email: actualShare.email,
+      accessKey: actualShare.accessKey,
+      secretKey: actualShare.secretKey,
+      hasQuota: actualShare.capacity > 0,
+      capacity: actualShare.capacity > 0 ? Math.round(actualShare.capacity) : null,
+      used: actualShare.capacity > 0 ? Math.round(actualShare.used) : null,
+      status: RadosGatewayShareStatus.up
+    };
+  }
+
+  /**
+   * @param {ClusterModel} cluster
+   * @param {Proxy} proxy
+   * @param {Array.<string>|null} shareNames
+   * @returns {Promise.<Array.<RadosGatewayShareModel>>}
+   */
+  async updateRadosGatewayShares(cluster, proxy, {shareNames = []} = {}) {
+    const updatePartially = (shareNames instanceof Array) && shareNames.length > 0;
+    let actualShares = [];
+
+    try {
+      actualShares = Object.entries(await proxy.rgw.users({timeout: ExtendedTimeout}))
+        .map(([userName, share]) => share);
+    }
+    catch (err) {
+    }
+    this._triggerExceptionPoint();
+
+    if (updatePartially) {
+      actualShares = actualShares.filter(x => shareNames.indexOf(x.username) >= 0);
+    }
+
+    const fn = restified.autocommit(async t => {
+      let result = [];
+
+      const shares = updatePartially ?
+        (await Promise.all(shareNames.map(async name => {
+          return (await cluster.getRadosGatewayShares({
+            where: {
+              userName: name
+            },
+            transaction: t
+          }))[0];
+        }))).filter(x => !!x) : (await cluster.getRadosGatewayShares({transaction: t}));
+
+      for (const actualShare of actualShares) {
+        let share = shares.filter(x => x.userName === actualShare.username)[0];
+
+        if (!share) {
+          share = await RadosGatewayShare.create(this._createRadosGatewayShareModel(actualShare), {transaction: t});
+          await share.setCluster(cluster, {transaction: t});
+        }
+        else {
+          Object.assign(share, this._createRadosGatewayShareModel(actualShare));
+          await share.save({transaction: t});
+        }
+
+        result.push(share);
+      }
+
+      if (!updatePartially) {
+        const missingShares = shares.filter(x => !actualShares.some(y => x.userName === y.username));
+
+        for (const missingShare of missingShares) {
+          Object.assign(missingShare, {
+            status: RadosGatewayShareStatus.missing
+          });
+
+          await missingShare.save({transaction: t});
+        }
+      }
+
+      return result;
+    });
+
+    return await fn();
   }
 
   /**
@@ -940,6 +1048,9 @@ class ClusterUpdater {
       this._triggerExceptionPoint();
 
       let hosts = await this.updateHosts(cluster, proxy);
+      this._triggerExceptionPoint();
+
+      let radosGatewayShares = await this.updateRadosGatewayShares(cluster, proxy);
       this._triggerExceptionPoint();
 
       let result = null;
