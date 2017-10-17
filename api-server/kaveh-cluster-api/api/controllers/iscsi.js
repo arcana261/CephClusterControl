@@ -89,7 +89,12 @@ module.exports = restified.make({
   /**
    * DELETE /cluster/{clusterName}/iscsi/{targetName}/lun
    */
-  deleteScsiTargetLun: deleteScsiTargetLun
+  deleteScsiTargetLun: deleteScsiTargetLun,
+
+  /**
+   * POST /cluster/{clusterName}/iscsi/refresh
+   */
+  refreshScsiShares: refreshScsiShares
 });
 
 /**
@@ -209,6 +214,39 @@ async function formatScsiHost(t, cluster, scsiHost) {
       status: HostStatus.up
     }
   };
+}
+
+async function refreshScsiShares(req, res) {
+  const {
+    clusterName: {value: clusterName}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found in cluster "${clusterName}"`);
+  }
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      const updater = new ClusterUpdater(clusterName);
+
+      let hosts = await updater.updateHosts(cluster, proxy);
+      let result = await updater.updateScsiHosts(cluster, proxy, hosts);
+      result = await updater.updateRbdImages(cluster, proxy, result.hosts);
+      await updater.updateScsiTargets(cluster, proxy, result.hosts);
+
+      return {};
+    });
+
+    return await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function deleteScsiHost(t, req, res) {

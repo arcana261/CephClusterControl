@@ -4,6 +4,11 @@ const restified = require('../helpers/restified');
 const {Cluster} = require('../../models');
 const except = require('../helpers/except');
 const ClusterUpdateService = require('../service');
+const config = require('../../config');
+const ErrorFormatter = require('../../../../lib/utils/ErrorFormatter');
+const Retry = require('../../../../lib/utils/Retry');
+const logger = require('logging').default('ClusterController');
+const ClusterUpdater = require('../service/ClusterUpdater');
 
 module.exports = restified.make({
   /**
@@ -29,7 +34,12 @@ module.exports = restified.make({
   /**
    * GET /cluster
    */
-  getClusterList: getClusterList
+  getClusterList: getClusterList,
+
+  /**
+   * POST /cluster/{clusterName}/refresh
+   */
+  refreshCluster: refreshCluster
 });
 
 function formatCluster(cluster) {
@@ -44,6 +54,31 @@ function formatCluster(cluster) {
       timeout: cluster.brokerTimeout
     }
   };
+}
+
+async function refreshCluster(req, res) {
+  const {
+    clusterName: {value: clusterName}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found`);
+  }
+
+  const result = await Retry.run(async () => {
+    const updater = new ClusterUpdater(clusterName);
+    await updater.run();
+
+    return {};
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function deleteCluster(t, req, res) {

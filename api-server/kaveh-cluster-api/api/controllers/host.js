@@ -3,6 +3,11 @@
 const restified = require('../helpers/restified');
 const {Cluster, Host, RpcType} = require('../../models');
 const except = require('../helpers/except');
+const ClusterUpdater = require('../service/ClusterUpdater');
+const Retry = require('../../../../lib/utils/Retry');
+const logger = require('logging').default('HostController');
+const ErrorFormatter = require('../../../../lib/utils/ErrorFormatter');
+const config = require('../../config');
 
 module.exports = restified.make({
   /**
@@ -18,7 +23,12 @@ module.exports = restified.make({
   /**
    * DELETE /cluster/{clusterName}/host/{hostName}
    */
-  deleteClusterHost: deleteClusterHost
+  deleteClusterHost: deleteClusterHost,
+
+  /**
+   * POST /cluster/{clusterName}/host
+   */
+  refreshClusterHosts: refreshClusterHosts
 });
 
 /**
@@ -69,6 +79,36 @@ async function findHost(t, clusterName, hostName) {
   }
 
   return host;
+}
+
+async function refreshClusterHosts(req, res) {
+  const {
+    clusterName: {value: clusterName}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found`);
+  }
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      const updater = new ClusterUpdater(clusterName);
+      const hosts = await updater.updateHosts(cluster, proxy);
+      await updater.updateScsiHosts(cluster, proxy, hosts);
+
+      return {};
+    });
+
+    return await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function deleteClusterHost(t, req, res) {

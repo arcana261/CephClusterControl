@@ -79,7 +79,12 @@ module.exports = restified.make({
   /**
    * PATCH /cluster/{clusterName}/samba/{shareName}/capacity
    */
-  extendSambaShare: extendSambaShare
+  extendSambaShare: extendSambaShare,
+
+  /**
+   * POST /cluster/{clusterName}/samba/refresh
+   */
+  refreshSambaShares: refreshSambaShares
 });
 
 /**
@@ -119,6 +124,38 @@ async function formatSambaShare(t, cluster, share) {
       permission: x.permission
     }))
   };
+}
+
+async function refreshSambaShares(req, res) {
+  const {
+    clusterName: {value: clusterName}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found`);
+  }
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      const updater = new ClusterUpdater(clusterName);
+
+      let hosts = await updater.updateHosts(cluster, proxy);
+      let result = await updater.updateRbdImages(cluster, proxy, hosts);
+      await updater.updateSambaShares(cluster, proxy, result.hosts);
+
+      return {};
+    });
+
+    return await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function extendSambaShare(req, res) {

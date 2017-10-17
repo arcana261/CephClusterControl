@@ -204,6 +204,35 @@ paths:
           $ref: '#/responses/BadRequest'
         500:
           $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/refresh:
+    x-swagger-router-controller: cluster
+    parameters:
+      - $ref: '#/parameters/clusterName'
+    post:
+      summary: refreshCluster
+      description: refresh information stored about a cluster
+      operationId: refreshCluster
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Cluster
+      parameters:
+        - name: refreshData
+          in: body
+          description: empty object
+          required: true
+          schema:
+            $ref: '#/definitions/EmptyObject'
+      responses:
+        200:
+          description: indicates that cluster data have been updated
+          schema:
+            $ref: '#/definitions/EmptyObject'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError' 
   /cluster/{clusterName}:
     x-swagger-router-controller: cluster
     parameters:
@@ -292,6 +321,31 @@ paths:
                 type: array
                 items:
                   $ref: '#/definitions/Host'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    post:
+      summary: refreshClusterHosts
+      description: refreshes known rpc hosts in cluster
+      operationId: refreshClusterHosts
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Host
+      parameters:
+        - name: refreshData
+          in: body
+          description: empty object
+          required: true
+          schema:
+            $ref: '#/definitions/EmptyObject'
+      responses:
+        200:
+          description: indicates known hosts in cluster is updated
+          schema:
+            $ref: '#/definitions/EmptyObject'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -478,6 +532,35 @@ paths:
           $ref: '#/responses/NotFound'
         409:
           $ref: '#/responses/Conflict'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/rbd/refresh:
+    x-swagger-router-controller: rbd
+    parameters:
+      - $ref: '#/parameters/clusterName'
+    post:
+      summary: refreshRbdImages
+      description: refreshes information about rbd images
+      operationId: refreshRbdImages
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RBD
+      parameters:
+        - name: refreshData
+          in: body
+          description: empty object
+          required: true
+          schema:
+            $ref: '#/definitions/EmptyObject'
+      responses:
+        200:
+          description: indicates that rbd images have been updated
+          schema:
+            $ref: '#/definitions/EmptyObject'
+        404:
+          $ref: '#/responses/NotFound'
         500:
           $ref: '#/responses/InternalServerError'
   /cluster/{clusterName}/rbd/disk/{pool}/{imageName}:
@@ -873,6 +956,35 @@ paths:
                 type: array
                 items:
                   $ref: '#/definitions/SambaShare'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/samba/refresh:
+    x-swagger-router-controller: samba
+    parameters:
+      - $ref: '#/parameters/clusterName'
+    post:
+      summary: refreshSambaShares
+      description: refresh list of known samba shares
+      operationId: refreshSambaShares
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Samba
+      parameters:
+        - name: refreshData
+          in: body
+          description: empty object
+          required: true
+          schema:
+            $ref: '#/definitions/EmptyObject'
+      responses:
+        200:
+          description: indicates that samba information has been updated
+          schema:
+            $ref: '#/definitions/EmptyObject'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -1341,6 +1453,35 @@ paths:
                 type: array
                 items:
                   $ref: '#/definitions/IScsiTarget'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/iscsi/refresh:
+    x-swagger-router-controller: iscsi
+    parameters:
+      - $ref: '#/parameters/clusterName'
+    post:
+      summary: refreshScsiShares
+      description: refresh list of known iscsi shares
+      operationId: refreshScsiShares
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+      parameters:
+        - name: refreshData
+          in: body
+          description: empty object
+          required: true
+          schema:
+            $ref: '#/definitions/EmptyObject'
+      responses:
+        200:
+          description: indicates that iscsi shares have been updated
+          schema:
+            $ref: '#/definitions/EmptyObject'
         404:
           $ref: '#/responses/NotFound'
         500:

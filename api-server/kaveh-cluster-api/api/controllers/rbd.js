@@ -47,7 +47,12 @@ module.exports = restified.make({
   /**
    * POST /cluster/{clusterName}/rbd/disk/{pool}/{imageName}/extend
    */
-  extendRbdImage: extendRbdImage
+  extendRbdImage: extendRbdImage,
+
+  /**
+   * POST /cluster/{clusterName}/rbd/refresh
+   */
+  refreshRbdImages: refreshRbdImages
 });
 
 /**
@@ -78,6 +83,37 @@ async function formatRbdImage(t, image) {
       host: !host ? '' : host.hostName
     }
   };
+}
+
+async function refreshRbdImages(req, res) {
+  const {
+    clusterName: {value: clusterName}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster not found: "${clusterName}"`);
+  }
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      const updater = new ClusterUpdater(clusterName);
+
+      const hosts = await updater.updateHosts(cluster, proxy);
+      await updater.updateRbdImages(cluster, proxy, hosts);
+
+      return {};
+    });
+
+    return await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function extendRbdImage(req, res) {

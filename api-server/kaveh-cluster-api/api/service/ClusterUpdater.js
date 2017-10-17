@@ -677,9 +677,8 @@ class ClusterUpdater {
    * @param {ClusterModel} cluster
    * @param {Proxy} proxy
    * @returns {Promise.<Array.<HostModel>>}
-   * @private
    */
-  async _updateHosts(cluster, proxy) {
+  async updateHosts(cluster, proxy) {
     const actualHosts = await proxy.hosts();
     this._triggerExceptionPoint();
 
@@ -940,7 +939,7 @@ class ClusterUpdater {
       const proxy = new Proxy(client);
       this._triggerExceptionPoint();
 
-      let hosts = await this._updateHosts(cluster, proxy);
+      let hosts = await this.updateHosts(cluster, proxy);
       this._triggerExceptionPoint();
 
       let result = null;
