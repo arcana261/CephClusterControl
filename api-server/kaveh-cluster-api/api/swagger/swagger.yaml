@@ -1404,6 +1404,32 @@ paths:
           $ref: '#/responses/NotFound'
         500:
           $ref: '#/responses/InternalServerError'
+    delete:
+      summary: deleteScsiHost
+      description: used to delete a missing iscsi host
+      operationId: deleteScsiHost
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+        - Host
+      parameters:
+        - name: deleteData
+          in: body
+          description: empty object
+          required: true
+          schema:
+            $ref: '#/definitions/EmptyObject'
+      responses:
+        200:
+          description: indicates that iscsi host was successfuly deleted
+          schema:
+            $ref: '#/definitions/EmptyObject'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
   /cluster/{clusterName}/iscsi/host/{hostName}/auth:
     x-swagger-router-controller: iscsi
     parameters:

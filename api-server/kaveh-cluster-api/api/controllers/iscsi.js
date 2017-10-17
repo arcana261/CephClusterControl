@@ -37,6 +37,11 @@ module.exports = restified.make({
   getScsiHost: getScsiHost,
 
   /**
+   * DELETE /cluster/{clusterName}/iscsi/host/{hostName}
+   */
+  deleteScsiHost: deleteScsiHost,
+
+  /**
    * POST /cluster/{clusterName}/iscsi
    */
   addScsiTarget: addScsiTarget,
@@ -204,6 +209,43 @@ async function formatScsiHost(t, cluster, scsiHost) {
       status: HostStatus.up
     }
   };
+}
+
+async function deleteScsiHost(t, req, res) {
+  const {
+    clusterName: {value: clusterName},
+    hostName: {value: hostName}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found in cluster "${clusterName}"`);
+  }
+
+  const [scsiHost] = await cluster.getScsiHosts({
+    include: [{
+      model: Host,
+      where: {
+        hostName: hostName
+      }
+    }],
+    limit: 1,
+    offset: 0,
+    transaction: t
+  });
+
+  if (!scsiHost) {
+    throw new except.NotFoundError(`iscsi host "${hostName}" not found in cluster "${clusterName}"`);
+  }
+
+  await scsiHost.destroy({transaction: t});
+
+  res.json({});
 }
 
 async function deleteScsiTargetLun(req, res) {
@@ -442,7 +484,7 @@ async function extendScsiTargetCapacity(req, res) {
       const scsiResult = await updater.updateScsiTargets(cluster, proxy, [scsiHost.Host],
         {targets: [targetName]});
 
-      const gn = restified.make(async t => {
+      const gn = restified.autocommit(async t => {
         return await formatScsiTarget(t, cluster, scsiResult.targets[0]);
       });
 
@@ -684,8 +726,10 @@ async function updateScsiPortalAuthentication(req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found in cluster "${clusterName}"`);
   }
 
+  let host = null;
+
   const preconditionChecker = restified.autocommit(async t => {
-    const [host] = await cluster.getScsiHosts({
+    host = (await cluster.getScsiHosts({
       include: [{
         model: Host,
         where: {
@@ -695,7 +739,7 @@ async function updateScsiPortalAuthentication(req, res) {
       limit: 1,
       offset: 0,
       transaction: t
-    });
+    }))[0];
 
     if (!host) {
       throw new except.NotFoundError(`host "${hostName}" not found in cluster "${clusterName}"`);
@@ -882,7 +926,7 @@ async function addScsiTarget(req, res) {
 
   let host = null;
 
-  const preconditionChecker = restified.make(async t => {
+  const preconditionChecker = restified.autocommit(async t => {
     const [target] = await cluster.getScsiTargets({
       where: {
         name: name

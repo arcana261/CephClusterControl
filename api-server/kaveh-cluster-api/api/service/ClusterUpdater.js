@@ -344,7 +344,12 @@ class ClusterUpdater {
     const fn = restified.autocommit(async t => {
       const scsiHosts = isPartialUpdate ?
         (await Promise.all(filteredHosts.map(host =>
-          host.getScsiHost({transaction: t})))).filter(x => !!x) :
+          host.getScsiHost({
+            include: [{
+              model: Host
+            }],
+            transaction: t
+          })))).filter(x => !!x) :
         await cluster.getScsiHosts({
           include: [{
             model: Host
