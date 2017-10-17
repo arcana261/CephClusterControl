@@ -108,7 +108,7 @@ class ClusterUpdater {
     this._triggerExceptionPoint();
 
     const fn = restified.autocommit(async t => {
-      const targets =
+      const dbTargets =
         isPartialUpdate ?
           (await Promise.all(targets.map(async targetName => {
             return (await cluster.getScsiTargets({
@@ -124,7 +124,7 @@ class ClusterUpdater {
       let result = [];
 
       for (const actualTarget of actualTargets) {
-        let [target] = targets.filter(x => x.iqn === actualTarget.stringifiedIqn);
+        let [target] = dbTargets.filter(x => x.iqn === actualTarget.stringifiedIqn);
 
         if (target) {
           Object.assign(target, this._createScsiTargetModel(actualTarget));
