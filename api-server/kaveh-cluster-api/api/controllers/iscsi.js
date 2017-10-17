@@ -269,6 +269,7 @@ async function deleteScsiTargetLun(req, res) {
   }
 
   let scsiHost = null;
+  let lun = null;
 
   const preconditionChecker = restified.autocommit(async t => {
     const [target] = await cluster.getScsiTargets({
@@ -295,6 +296,17 @@ async function deleteScsiTargetLun(req, res) {
     if (!scsiHost || !scsiHost.Host) {
       throw new except.NotFoundError(`target "${targetName}" is missing in cluster "${clusterName}"`);
     }
+
+    lun = (await target.getScsiLuns({
+      transaction: t,
+      limit: 1,
+      offset: index
+    }))[0];
+
+    if (!lun) {
+      throw new except.NotFoundError(`iscsi lun with index "${index}" not found ` +
+        `for target "${targetName}" in cluster "${clusterName}"`);
+    }
   });
 
   await preconditionChecker();
@@ -302,7 +314,7 @@ async function deleteScsiTargetLun(req, res) {
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
       try {
-        await proxy.iscsi.removeLun(targetName, index, {
+        await proxy.iscsi.removeLun(targetName, lun.index, {
           host: scsiHost.Host.hostName,
           timeout: ClusterUpdater.ExtendedTimeoutValue,
           usage: false,
@@ -315,13 +327,33 @@ async function deleteScsiTargetLun(req, res) {
         }
       }
 
-      const updater = new ClusterUpdater(clusterName);
-      const result = await updater.updateScsiTargets(cluster, proxy, [scsiHost.Host], {
-        targets: [targetName]
-      });
-
       const gn = restified.autocommit(async t => {
-        return await formatScsiTarget(t, cluster, result.targets[0]);
+        await lun.destroy({transaction: t});
+
+        const [target] = await cluster.getScsiTargets({
+          where: {
+            name: targetName
+          },
+          include: [{
+            model: ScsiHost,
+            include: [{
+              model: Host
+            }]
+          }, {
+            model: ScsiLun
+          }, {
+            model: RbdImage
+          }],
+          limit: 1,
+          offset: 0,
+          transaction: t
+        });
+
+        if (!target) {
+          throw new except.NotFoundError(`target "${targetName}" not found in cluster "${clusterName}"`);
+        }
+
+        return await formatScsiTarget(t, cluster, target);
       });
 
       return await gn();
