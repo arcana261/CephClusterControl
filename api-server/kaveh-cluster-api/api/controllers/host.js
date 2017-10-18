@@ -28,7 +28,12 @@ module.exports = restified.make({
   /**
    * POST /cluster/{clusterName}/host
    */
-  refreshClusterHosts: refreshClusterHosts
+  refreshClusterHosts: refreshClusterHosts,
+
+  /**
+   * /host/types
+   */
+  getHostTypes: getHostTypes
 });
 
 /**
@@ -79,6 +84,14 @@ async function findHost(t, clusterName, hostName) {
   }
 
   return host;
+}
+
+async function getHostTypes(t, req, res) {
+  const types = await RpcType.findAll({transaction: t});
+
+  res.json({
+    result: types.map(type => type.name)
+  });
 }
 
 async function refreshClusterHosts(req, res) {
@@ -136,27 +149,65 @@ async function getClusterHost(t, req, res) {
 
 async function listClusterHosts(t, req, res) {
   const {
-    clusterName: {value: clusterName}
+    clusterName: {value: clusterName},
+    start: {value: start = req.swagger.params.start.schema.default},
+    length: {value: length = req.swagger.params.length.schema.default},
+    type: {value: type = null}
   } = req.swagger.params;
 
   const cluster = await Cluster.findOne({
     where: {
       name: clusterName
     },
-    transaction: t,
-    include: [{
-      model: Host,
-      include: [{
-        model: RpcType
-      }]
-    }]
+    transaction: t
   });
 
   if (!cluster) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found`);
   }
 
+  let hosts = null;
+
+  if (!type) {
+    hosts = await cluster.getHosts({
+      include: [{
+        model: RpcType,
+      }],
+      transaction: t,
+      limit: length,
+      offset: start
+    });
+  }
+  else {
+    const rpcType = await RpcType.findOne({
+      where: {
+        name: type
+      },
+      include: [{
+        model: Host,
+        include: [{
+          model: Cluster,
+          where: {
+            name: clusterName
+          }
+        }]
+      }],
+      transaction: t
+    });
+
+    if (!rpcType) {
+      hosts = [];
+    }
+    else {
+      hosts = rpcType.Hosts;
+
+      for (const host of hosts) {
+        host.RpcTypes = await host.getRpcTypes({transaction: t});
+      }
+    }
+  }
+
   res.json({
-    result: cluster.Hosts.map(host => formatHost(cluster, host, host.RpcTypes))
+    result: hosts.map(host => formatHost(cluster, host, host.RpcTypes))
   });
 }

@@ -150,8 +150,8 @@ async function deleteRgwShare(req, res) {
           transaction: t
         });
 
-        if (share) {
-          throw new except.ConflictError(`rgw share "${userName}" already exists in cluster "${clusterName}"`);
+        if (!share) {
+          throw new except.NotFoundError(`cluster "${clusterName}" not found`);
         }
 
         await share.destroy({transaction: t});

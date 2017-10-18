@@ -151,6 +151,29 @@ paths:
           $ref: '#/responses/BadRequest'
         500:
           $ref: '#/responses/InternalServerError'
+  /host/types:
+    x-swagger-router-controller: host
+    get:
+      summary: getHostTypes
+      description: gets list of known rpc host types
+      operationId: getHostTypes
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Host
+      responses:
+        200:
+          description: returns list of known rpc types
+          schema:
+            type: object
+            required:
+              - result
+            properties:
+              result:
+                type: array
+                items:
+                  type: string
   /cluster:
     x-swagger-router-controller: cluster
     get:
@@ -302,6 +325,13 @@ paths:
     x-swagger-router-controller: host
     parameters:
       - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/listStart'
+      - $ref: '#/parameters/listLength'
+      - name: type
+        in: query
+        description: show hosts of specific type only
+        required: false
+        type: string
     get:
       summary: listClusterHosts
       description: gets list of hosts and their status
