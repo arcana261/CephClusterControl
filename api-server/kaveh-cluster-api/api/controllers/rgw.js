@@ -26,7 +26,27 @@ module.exports = restified.make({
   /**
    * PUT /cluster/{clusterName}/rgw
    */
-  addRgwShare: addRgwShare
+  addRgwShare: addRgwShare,
+
+  /**
+   * POST /cluster/{clusterName}/rgw/{userName}/quota
+   */
+  setRgwQuota: setRgwQuota,
+
+  /**
+   * DELETE /cluster/{clusterName}/rgw/{userName}/quota
+   */
+  deleteRgwQuota: deleteRgwQuota,
+
+  /**
+   * DELETE /cluster/{clusterName}/rgw/{userName}
+   */
+  deleteRgwShare: deleteRgwShare,
+
+  /**
+   * POST /cluster/{clusterName}/rgw/refresh
+   */
+  refreshRgwShares: refreshRgwShares
 });
 
 /**
@@ -48,6 +68,209 @@ function formatRgwShare(share) {
     used: share.used || 0,
     status: share.status
   };
+}
+
+async function refreshRgwShares(req, res) {
+  const {
+    clusterName: {value: clusterName}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found`);
+  }
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      const updater = new ClusterUpdater(clusterName);
+      await updater.updateRadosGatewayShares(cluster, proxy);
+
+      return {};
+    });
+
+    return await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
+}
+
+async function deleteRgwShare(req, res) {
+  const {
+    clusterName: {value: clusterName},
+    userName: {value: userName}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found`);
+  }
+
+  const preconditionChecker = restified.autocommit(async t => {
+    const [share] = await cluster.getRadosGatewayShares({
+      where: {
+        userName: userName
+      },
+      limit: 1,
+      offset: 0,
+      transaction: t
+    });
+
+    if (!share) {
+      throw new except.NotFoundError(`rgw share "${userName}" not found in cluster "${clusterName}"`);
+    }
+  });
+
+  await preconditionChecker();
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      try {
+        await proxy.rgw.del(userName, {timeout: ClusterUpdater.ExtendedTimeoutValue});
+      }
+      catch (err) {
+      }
+
+      const gn = restified.autocommit(async t => {
+        const [share] = await cluster.getRadosGatewayShares({
+          where: {
+            userName: userName
+          },
+          limit: 1,
+          offset: 0,
+          transaction: t
+        });
+
+        if (share) {
+          throw new except.ConflictError(`rgw share "${userName}" already exists in cluster "${clusterName}"`);
+        }
+
+        await share.destroy({transaction: t});
+
+        return {};
+      });
+
+      return await gn();
+    });
+
+    return await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
+}
+
+async function deleteRgwQuota(req, res) {
+  const {
+    clusterName: {value: clusterName},
+    userName: {value: userName}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found`);
+  }
+
+  const preconditionChecker = restified.autocommit(async t => {
+    const [share] = await cluster.getRadosGatewayShares({
+      where: {
+        userName: userName
+      },
+      limit: 1,
+      offset: 0,
+      transaction: t
+    });
+
+    if (!share) {
+      throw new except.NotFoundError(`rgw share "${userName}" not found in cluster "${clusterName}"`);
+    }
+  });
+
+  await preconditionChecker();
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      await proxy.rgw.disableQuota(userName, {timeout: ClusterUpdater.ExtendedTimeoutValue});
+
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateRadosGatewayShares(cluster, proxy, {
+        shareNames: [userName]
+      });
+
+      return formatRgwShare(result[0]);
+    });
+
+    return await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
+}
+
+async function setRgwQuota(req, res) {
+  const {
+    clusterName: {value: clusterName},
+    userName: {value: userName},
+    capacity: {value: {
+      capacity: capacity
+    }}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found`);
+  }
+
+  const preconditionChecker = restified.autocommit(async t => {
+    const [share] = await cluster.getRadosGatewayShares({
+      where: {
+        userName: userName
+      },
+      limit: 1,
+      offset: 0,
+      transaction: t
+    });
+
+    if (!share) {
+      throw new except.NotFoundError(`rgw share "${userName}" not found in cluster "${clusterName}"`);
+    }
+  });
+
+  await preconditionChecker();
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      await proxy.rgw.enableQuota(userName, capacity, {timeout: ClusterUpdater.ExtendedTimeoutValue});
+
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateRadosGatewayShares(cluster, proxy, {
+        shareNames: [userName]
+      });
+
+      return formatRgwShare(result[0]);
+    });
+
+    return await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function addRgwShare(req, res) {

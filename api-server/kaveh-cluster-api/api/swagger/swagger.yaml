@@ -789,6 +789,35 @@ paths:
           $ref: '#/responses/NotFound'
         500:
           $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/rgw/refresh:
+    x-swagger-router-controller: rgw
+    parameters:
+      - $ref: '#/parameters/clusterName'
+    post:
+      summary: refreshRgwShares
+      description: refreshes list of known rgw shares
+      operationId: refreshRgwShares
+      security:
+        - basic: []
+      x-required-role: user
+      parameters:
+        - name: refreshData
+          in: body
+          description: empty object
+          required: true
+          schema:
+            $ref: '#/definitions/EmptyObject'
+      tags:
+        - RGW
+      responses:
+        200:
+          description: indicates RGW shares was updated from cluster
+          schema:
+            $ref: '#/definitions/EmptyObject'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
   /cluster/{clusterName}/rgw/{userName}:
     x-swagger-router-controller: rgw
     parameters:
@@ -828,6 +857,8 @@ paths:
       responses:
         200:
           description: indicates RGW share was deleted
+          schema:
+            $ref: '#/definitions/EmptyObject'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -853,6 +884,8 @@ paths:
       responses:
         200:
           description: indicates quota was deleted from rgw share
+          schema:
+            $ref: '#/definitions/RadosGatewayShare'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -871,11 +904,18 @@ paths:
           in: body
           description: new capacity of share in MB (megabytes)
           schema:
-            type: integer
+            type: object
+            required:
+              - capacity
+            properties:
+              capacity:
+                type: integer
           required: true
       responses:
         200:
           description: indicates quota was successfuly set for rgw share
+          schema:
+            $ref: '#/definitions/RadosGatewayShare'
         404:
           $ref: '#/responses/NotFound'
         400:
