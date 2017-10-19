@@ -193,11 +193,17 @@ paths:
           description: returns list of defined clusters
           schema:
             type: object
+            required:
+              - result
+              - total
             properties:
               result:
                 type: array
                 items:
                   $ref: '#/definitions/ClusterConfig'
+              total:
+                type: integer
+                description: total number of records
         500:
           $ref: '#/responses/InternalServerError'
     put:
@@ -351,6 +357,9 @@ paths:
                 type: array
                 items:
                   $ref: '#/definitions/Host'
+              total:
+                type: integer
+                description: total number of records
         404:
           $ref: '#/responses/NotFound'
         500:

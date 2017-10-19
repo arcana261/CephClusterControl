@@ -173,7 +173,7 @@ async function getCluster(req, res) {
   res.json(formatCluster(cluster));
 }
 
-async function getClusterList(req, res) {
+async function getClusterList(t, req, res) {
   const {
     start: {value: start = req.swagger.params.start.schema.default},
     length: {value: length = req.swagger.params.length.schema.default}
@@ -182,8 +182,10 @@ async function getClusterList(req, res) {
   res.json({
     result: (await Cluster.findAll({
       limit: length,
-      offset: start
-    })).map(cluster => formatCluster(cluster))
+      offset: start,
+      transaction: t
+    })).map(cluster => formatCluster(cluster)),
+    total: await Cluster.count({transaction: t})
   });
 }
 

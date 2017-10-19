@@ -167,8 +167,13 @@ async function listClusterHosts(t, req, res) {
   }
 
   let hosts = null;
+  let total = 0;
 
   if (!type) {
+    total = await cluster.countHosts({
+      transaction: t
+    });
+
     hosts = await cluster.getHosts({
       include: [{
         model: RpcType,
@@ -183,31 +188,42 @@ async function listClusterHosts(t, req, res) {
       where: {
         name: type
       },
-      include: [{
-        model: Host,
-        include: [{
-          model: Cluster,
-          where: {
-            name: clusterName
-          }
-        }]
-      }],
       transaction: t
     });
 
     if (!rpcType) {
       hosts = [];
+      total = 0;
     }
     else {
-      hosts = rpcType.Hosts;
+      total = await rpcType.countHosts({
+        include: [{
+          model: Cluster,
+          where: {
+            name: clusterName
+          }
+        }],
+        transaction: t
+      });
 
-      for (const host of hosts) {
-        host.RpcTypes = await host.getRpcTypes({transaction: t});
-      }
+      hosts = await rpcType.getHosts({
+        include: [{
+          model: Cluster,
+          where: {
+            name: clusterName
+          }
+        }, {
+          model: RpcType
+        }],
+        transaction: t,
+        limit: length,
+        offset: start
+      });
     }
   }
 
   res.json({
-    result: hosts.map(host => formatHost(cluster, host, host.RpcTypes))
+    result: hosts.map(host => formatHost(cluster, host, host.RpcTypes)),
+    total: total
   });
 }

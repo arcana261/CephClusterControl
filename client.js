@@ -22,6 +22,7 @@ const EtaReporter = require('./lib/utils/EtaReporter');
 const PackageJson = require('./package.json');
 const os = require('os');
 const LocalToken = require('./lib/utils/LocalToken');
+const typeCheck = require('type-check').typeCheck;
 
 let yargs = null;
 
@@ -167,6 +168,7 @@ function printRadosGatewayTable(users) {
     {key: 'Email', value: x => x.email},
     {key: 'AccessKey', value: x => x.accessKey || ''},
     {key: 'SecretKey', value: x => x.secretKey || ''},
+    {key: 'Suspended', value: x => x.suspended ? 'yes' : 'no'},
     {key: 'Capacity', value: x => SizeParser.stringify(x.capacity || 0)},
     {key: 'Used', value: x => SizeParser.stringify(x.used || 0)}]);
 
@@ -380,72 +382,104 @@ async function main() {
         console.log();
       }
     }))
-    .command('rgw <ls|lshost|add|del|enable-quota|disable-quota> [username]', 'manage radosgateway (rgw) users', {
-      'display-name': {
-        describe: 'user display name',
-        default: '-',
-        requiresArg: true
-      },
+    .command('rgw <ls|lshost|add|del|enable-quota|disable-quota|update|suspend|unsuspend> [username]',
+      'manage radosgateway (rgw) users', {
+        'display-name': {
+          describe: 'user display name',
+          default: '-',
+          requiresArg: true
+        },
 
-      'email': {
-        describe: 'user email',
-        default: '-',
-        requiresArg: true
-      },
+        'email': {
+          describe: 'user email',
+          default: '-',
+          requiresArg: true
+        },
 
-      'size': {
-        describe: 'size to set quota on users',
-        default: 0,
-        requiresArg: true
-      }
-    }, subcommand({
-      lshost: async (argv, proxy) => {
-        printHosts(await proxy.rbd.hosts());
-      },
-
-      ls: async (argv, proxy) => {
-        printRadosGatewayTable(Object.entries(await proxy.rgw.users())
-          .map(([key, user]) => user));
-      },
-
-      'enable-quota': async (argv, proxy) => {
-        if (!argv.username || !argv.size) {
-          return false;
+        'size': {
+          describe: 'size to set quota on users',
+          default: 0,
+          requiresArg: true
         }
+      }, subcommand({
+        lshost: async (argv, proxy) => {
+          printHosts(await proxy.rbd.hosts());
+        },
 
-        printRadosGatewayTable([await proxy.rgw.enableQuota(
-          argv.username, SizeParser.parseMegabyte('' + argv.size))]);
-      },
+        ls: async (argv, proxy) => {
+          printRadosGatewayTable(Object.entries(await proxy.rgw.users())
+            .map(([key, user]) => user));
+        },
 
-      'disable-quota': async (argv, proxy) => {
-        if (!argv.username) {
-          return false;
+        update: async (argv, proxy) => {
+          if (!argv.username) {
+            return false;
+          }
+
+          const displayName = argv['display-name'];
+          const email = argv['email'];
+
+          printRadosGatewayTable([
+            await proxy.rgw.update(argv.username, {
+              fullName: typeCheck('String', displayName) && displayName !== '-' ? displayName : null,
+              email: typeCheck('String', email) && email !== '-' ? email : null
+            })]);
+        },
+
+        suspend: async (argv, proxy) => {
+          if (!argv.username) {
+            return false;
+          }
+
+          printRadosGatewayTable([await proxy.rgw.suspend(argv.username)]);
+        },
+
+        unsuspend: async (argv, proxy) => {
+          if (!argv.username) {
+            return false;
+          }
+
+          printRadosGatewayTable([await proxy.rgw.unsuspend(argv.username)]);
+        },
+
+        'enable-quota': async (argv, proxy) => {
+          if (!argv.username || !argv.size) {
+            return false;
+          }
+
+          printRadosGatewayTable([await proxy.rgw.enableQuota(
+            argv.username, SizeParser.parseMegabyte('' + argv.size))]);
+        },
+
+        'disable-quota': async (argv, proxy) => {
+          if (!argv.username) {
+            return false;
+          }
+
+          printRadosGatewayTable([await proxy.rgw.disableQuota(argv.username)]);
+        },
+
+        del: async (argv, proxy) => {
+          if (!argv.username) {
+            return false;
+          }
+
+          await proxy.rgw.del(argv.username);
+          console.log('deleted');
+          console.log();
+        },
+
+        add: async (argv, proxy) => {
+          if (!argv.username) {
+            return false;
+          }
+
+          printRadosGatewayTable([await proxy.rgw.add({
+            username: argv.username,
+            displayName: (!argv['display-name'] || argv['display-name'] === '-') ? argv.username : argv['display-name'],
+            email: (!argv.email || argv.email === '-') ? null : argv.email
+          })]);
         }
-
-        printRadosGatewayTable([await proxy.rgw.disableQuota(argv.username)]);
-      },
-
-      del: async (argv, proxy) => {
-        if (!argv.username) {
-          return false;
-        }
-
-        await proxy.rgw.del(argv.username);
-        console.log('deleted');
-        console.log();
-      },
-
-      add: async (argv, proxy) => {
-        if (!argv.username) {
-          return false;
-        }
-
-        printRadosGatewayTable([await proxy.rgw.add({
-          username: argv.username,
-          displayName: (!argv['display-name'] || argv['display-name'] === '-') ? argv.username : argv['display-name'],
-          email: (!argv.email || argv.email === '-') ? null : argv.email
-        })]);
-      }
     }))
     .command('rbd <ls|lshost|du|info|create|showmapped|mount|umount|automount|rm|extend> [image] [location]', 'view information about rbd images', {
       pool: {
