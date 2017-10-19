@@ -444,7 +444,8 @@ class ClusterUpdater {
       hasQuota: actualShare.capacity > 0,
       capacity: actualShare.capacity > 0 ? Math.round(actualShare.capacity) : null,
       used: actualShare.capacity > 0 ? Math.round(actualShare.used) : null,
-      status: RadosGatewayShareStatus.up
+      status: RadosGatewayShareStatus.up,
+      suspended: actualShare.suspended
     };
   }
 

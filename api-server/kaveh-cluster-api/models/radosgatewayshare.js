@@ -13,6 +13,7 @@ const RadosGatewayShareStatus = require('../api/const/RadosGatewayShareStatus');
  * @property {number} capacity
  * @property {number} used
  * @property {string} status
+ * @property {boolean} suspended
  */
 
 module.exports = (sequelize, DataTypes) => {
@@ -30,7 +31,8 @@ module.exports = (sequelize, DataTypes) => {
       validate: {
         isIn: [RadosGatewayShareStatus._]
       }
-    }
+    },
+    suspended: DataTypes.BOOLEAN
   }, {
     classMethods: {
     }

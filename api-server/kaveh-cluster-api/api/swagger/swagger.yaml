@@ -861,11 +861,7 @@ paths:
     x-swagger-router-controller: rgw
     parameters:
       - $ref: '#/parameters/clusterName'
-      - name: userName
-        in: path
-        description: rgw username to query or change
-        type: string
-        required: true
+      - $ref: '#/parameters/radosGatewayUserName'
     get:
       summary: getRgwShare
       description: gets information about a rgw share
@@ -902,15 +898,136 @@ paths:
           $ref: '#/responses/NotFound'
         500:
           $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/rgw/{userName}/fullName:
+    x-swagger-router-controller: rgw
+    parameters:
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/radosGatewayUserName'
+    patch:
+      summary: updateRgwFullName
+      description: update fullname associated with rgw
+      operationId: updateRgwFullName
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RGW
+      parameters:
+        - name: updateData
+          in: body
+          description: new fullname to apply
+          required: true
+          schema:
+            type: object
+            required:
+              - fullName
+            properties:
+              fullName:
+                type: string
+      responses:
+        200:
+          description: indicates fullname of user was updated successfuly
+          schema:
+            $ref: '#/definitions/RadosGatewayShare'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/rgw/{userName}/email:
+    x-swagger-router-controller: rgw
+    parameters:
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/radosGatewayUserName'
+    patch:
+      summary: updateRgwEmail
+      description: update email associated with rgw
+      operationId: updateRgwEmail
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RGW
+      parameters:
+        - name: updateData
+          in: body
+          description: new email to apply
+          required: true
+          schema:
+            type: object
+            required:
+              - email
+            properties:
+              email:
+                type: string
+      responses:
+        200:
+          description: indicates email of user was updated successfuly
+          schema:
+            $ref: '#/definitions/RadosGatewayShare'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/rgw/{userName}/suspention:
+    x-swagger-router-controller: rgw
+    parameters:
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/radosGatewayUserName'
+    post:
+      summary: suspendRgwUser
+      description: suspend an rgw share
+      operationId: suspendRgwUser
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RGW
+      parameters:
+        - name: suspentionData
+          in: body
+          required: true
+          description: empty object
+          schema:
+            $ref: '#/definitions/EmptyObject'
+      responses:
+        200:
+          description: indicates user was suspended successfuly
+          schema:
+            $ref: '#/definitions/RadosGatewayShare'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    delete:
+      summary: unsuspendRgwUser
+      description: un-suspend an rgw share
+      operationId: unsuspendRgwUser
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - RGW
+      parameters:
+        - name: suspentionData
+          in: body
+          required: true
+          description: empty object
+          schema:
+            $ref: '#/definitions/EmptyObject'
+      responses:
+        200:
+          description: indicates user was un-suspended successfuly
+          schema:
+            $ref: '#/definitions/RadosGatewayShare'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
   /cluster/{clusterName}/rgw/{userName}/quota:
     x-swagger-router-controller: rgw
     parameters:
       - $ref: '#/parameters/clusterName'
-      - name: userName
-        in: path
-        description: rgw username to query or change
-        type: string
-        required: true
+      - $ref: '#/parameters/radosGatewayUserName'
     delete:
       summary: deleteRgwQuota
       description: disables quota for rgw share
@@ -2001,6 +2118,12 @@ parameters:
     description: name of iscsi target
     type: string
     required: true
+  radosGatewayUserName:
+    name: userName
+    in: path
+    description: rgw username to query or change
+    type: string
+    required: true
 
 responses:
   Conflict:
@@ -2383,6 +2506,7 @@ definitions:
       - capacity
       - used
       - status
+      - suspended
     properties:
       userName:
         type: string
@@ -2414,6 +2538,9 @@ definitions:
         enum:
           - up
           - missing
+      suspended:
+        type: boolean
+        description: whether rgw share is suspended or not
   RbdFileSystem:
     type: string
     description: shows compatible filesystem used for rbd images

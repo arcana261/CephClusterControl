@@ -46,7 +46,27 @@ module.exports = restified.make({
   /**
    * POST /cluster/{clusterName}/rgw/refresh
    */
-  refreshRgwShares: refreshRgwShares
+  refreshRgwShares: refreshRgwShares,
+
+  /**
+   * PATCH /cluster/{clusterName}/rgw/{userName}/fullName
+   */
+  updateRgwFullName: updateRgwFullName,
+
+  /**
+   * PATCH /cluster/{clusterName}/rgw/{userName}/fullName
+   */
+  updateRgwEmail: updateRgwEmail,
+
+  /**
+   * POST /cluster/{clusterName}/rgw/{userName}/suspention
+   */
+  suspendRgwUser: suspendRgwUser,
+
+  /**
+   * DELETE /cluster/{clusterName}/rgw/{userName}/suspention
+   */
+  unsuspendRgwUser: unsuspendRgwUser
 });
 
 /**
@@ -66,8 +86,225 @@ function formatRgwShare(share) {
     hasQuota: share.hasQuota,
     capacity: share.capacity || 0,
     used: share.used || 0,
-    status: share.status
+    status: share.status,
+    suspended: share.suspended || false
   };
+}
+
+async function unsuspendRgwUser(req, res) {
+  const {
+    clusterName: {value: clusterName},
+    userName: {value: userName}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found`);
+  }
+
+  const preconditionChecker = restified.autocommit(async t => {
+    const [share] = await cluster.getRadosGatewayShares({
+      where: {
+        userName: userName
+      },
+      limit: 1,
+      offset: 0,
+      transaction: t
+    });
+
+    if (!share) {
+      throw new except.NotFoundError(`rgw share "${userName}" not found in cluster "${clusterName}"`);
+    }
+  });
+
+  await preconditionChecker();
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      await proxy.rgw.unsuspend(userName, {timeout: ClusterUpdater.ExtendedTimeoutValue});
+
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateRadosGatewayShares(cluster, proxy, {
+        shareNames: [userName]
+      });
+
+      return formatRgwShare(result[0]);
+    });
+
+    return await fn();
+  });
+
+  res.json(result);
+}
+
+async function suspendRgwUser(req, res) {
+  const {
+    clusterName: {value: clusterName},
+    userName: {value: userName}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found`);
+  }
+
+  const preconditionChecker = restified.autocommit(async t => {
+    const [share] = await cluster.getRadosGatewayShares({
+      where: {
+        userName: userName
+      },
+      limit: 1,
+      offset: 0,
+      transaction: t
+    });
+
+    if (!share) {
+      throw new except.NotFoundError(`rgw share "${userName}" not found in cluster "${clusterName}"`);
+    }
+  });
+
+  await preconditionChecker();
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      await proxy.rgw.suspend(userName, {timeout: ClusterUpdater.ExtendedTimeoutValue});
+
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateRadosGatewayShares(cluster, proxy, {
+        shareNames: [userName]
+      });
+
+      return formatRgwShare(result[0]);
+    });
+
+    return await fn();
+  });
+
+  res.json(result);
+}
+
+async function updateRgwEmail(req, res) {
+  const {
+    clusterName: {value: clusterName},
+    userName: {value: userName},
+    updateData: {value: {
+      email: email
+    }}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found`);
+  }
+
+  const preconditionChecker = restified.autocommit(async t => {
+    const [share] = await cluster.getRadosGatewayShares({
+      where: {
+        userName: userName
+      },
+      limit: 1,
+      offset: 0,
+      transaction: t
+    });
+
+    if (!share) {
+      throw new except.NotFoundError(`rgw share "${userName}" not found in cluster "${clusterName}"`);
+    }
+  });
+
+  await preconditionChecker();
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      await proxy.rgw.update(userName, {
+        email: email,
+        timeout: ClusterUpdater.ExtendedTimeoutValue
+      });
+
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateRadosGatewayShares(cluster, proxy, {
+        shareNames: [userName]
+      });
+
+      return formatRgwShare(result[0]);
+    });
+
+    return await fn();
+  });
+
+  res.json(result);
+}
+
+async function updateRgwFullName(req, res) {
+  const {
+    clusterName: {value: clusterName},
+    userName: {value: userName},
+    updateData: {value: {
+      fullName: fullName
+    }}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found`);
+  }
+
+  const preconditionChecker = restified.autocommit(async t => {
+    const [share] = await cluster.getRadosGatewayShares({
+      where: {
+        userName: userName
+      },
+      limit: 1,
+      offset: 0,
+      transaction: t
+    });
+
+    if (!share) {
+      throw new except.NotFoundError(`rgw share "${userName}" not found in cluster "${clusterName}"`);
+    }
+  });
+
+  await preconditionChecker();
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      await proxy.rgw.update(userName, {
+        fullName: fullName,
+        timeout: ClusterUpdater.ExtendedTimeoutValue
+      });
+
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateRadosGatewayShares(cluster, proxy, {
+        shareNames: [userName]
+      });
+
+      return formatRgwShare(result[0]);
+    });
+
+    return await fn();
+  });
+
+  res.json(result);
 }
 
 async function refreshRgwShares(req, res) {
