@@ -1989,6 +1989,61 @@ paths:
           $ref: '#/responses/NotFound'
         500:
           $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/iscsi/{targetName}/suspend:
+    x-swagger-router-controller: iscsi
+    parameters:
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/targetName'
+    post:
+      summary: suspendScsiTarget
+      description: suspends iscsi target e.g. delayed payment
+      operationId: suspendScsiTarget
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+      parameters:
+        - name: suspendData
+          in: body
+          required: true
+          description: empty object
+          schema:
+            $ref: '#/definitions/EmptyObject'
+      responses:
+        200:
+          description: means that iscsi share was successfuly suspended
+          schema:
+            $ref: '#/definitions/IScsiTarget'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    delete:
+      summary: unsuspendScsiTarget
+      description: un-suspends iscsi target e.g. delayed payment
+      operationId: unsuspendScsiTarget
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - iSCSI
+      parameters:
+        - name: suspendData
+          in: body
+          required: true
+          description: empty object
+          schema:
+            $ref: '#/definitions/EmptyObject'
+      responses:
+        200:
+          description: means that iscsi share was successfuly un-suspended
+          schema:
+            $ref: '#/definitions/IScsiTarget'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
   /cluster/{clusterName}/iscsi/{targetName}/auth:
     x-swagger-router-controller: iscsi
     parameters:
@@ -2474,8 +2529,7 @@ definitions:
         enum:
           - up
           - missing
-          - down
-          - deleting
+          - suspended
   IScsiHost:
     type: object
     description: shows information about an iscsi enabled host

@@ -10,6 +10,7 @@ const ScsiTargetStatus = require('../api/const/ScsiTargetStatus');
  * @property {string} password
  * @property {string} status
  * @property {string} name
+ * @property {boolean} suspended
  */
 
 module.exports = (sequelize, DataTypes) => {
@@ -24,7 +25,9 @@ module.exports = (sequelize, DataTypes) => {
         isIn: [ScsiTargetStatus._]
       }
     },
-    name: DataTypes.STRING
+    name: DataTypes.STRING,
+    suspended: DataTypes.BOOLEAN,
+    domain: DataTypes.STRING
   }, {
     classMethods: {
     }

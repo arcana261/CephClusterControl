@@ -46,17 +46,32 @@ class ClusterUpdater {
 
   /**
    * @param {IScsiTarget} actualTarget
+   * @param {boolean} suspended
    * @returns {ScsiTargetModel}
    * @private
    */
-  _createScsiTargetModel(actualTarget) {
+  _createScsiTargetModel(actualTarget, suspended) {
+    let domain = null;
+
+    if (actualTarget.iqn.host && actualTarget.iqn.domain) {
+      domain = `${actualTarget.iqn.host}.${actualTarget.iqn.domain}`;
+    }
+    else if (actualTarget.iqn.host) {
+      domain = actualTarget.iqn.domain;
+    }
+    else {
+      domain = '';
+    }
+
     return {
       name: actualTarget.iqn.name,
       iqn: actualTarget.stringifiedIqn,
       requiresAuth: !!actualTarget.authentication,
       userName: actualTarget.authentication ? actualTarget.authentication.userId : null,
       password: actualTarget.authentication ? actualTarget.authentication.password : null,
-      status: ScsiTargetStatus.up
+      status: ScsiTargetStatus.up,
+      suspended: suspended,
+      domain: domain
     };
   }
 
@@ -74,12 +89,15 @@ class ClusterUpdater {
    * @param {Proxy} proxy
    * @param {Array.<HostModel>} hosts
    * @param {Array.<string>} targets
+   * @param {boolean} warnAsError
+   * @param {boolean} forceUpdateMissing
    * @returns {Promise.<{
    * hosts: Array.<HostModel>,
    * targets: Array.<ScsiTargetModel>
    * }>}
    */
-  async updateScsiTargets(cluster, proxy, hosts, {targets = []} = {}) {
+  async updateScsiTargets(cluster, proxy, hosts,
+                          {targets = [], warnAsError = false, forceUpdateMissing = false} = {}) {
     const filteredHosts = await (restified.autocommit(async t => {
       return (await Promise.all(hosts.map(async host => {
         const types = host.RpcTypes || (await host.getRpcTypes({transaction: t}));
@@ -110,6 +128,9 @@ class ClusterUpdater {
 
     this._triggerExceptionPoint();
 
+    const deletionList = [];
+    const additionList = [];
+
     const fn = restified.autocommit(async t => {
       const dbTargets =
         isPartialUpdate ?
@@ -130,11 +151,15 @@ class ClusterUpdater {
         let [target] = dbTargets.filter(x => x.iqn === actualTarget.stringifiedIqn);
 
         if (target) {
-          Object.assign(target, this._createScsiTargetModel(actualTarget));
+          Object.assign(target, this._createScsiTargetModel(actualTarget, target.suspended));
           await target.save({transaction: t});
+
+          if (target.suspended) {
+            deletionList.push(actualTarget);
+          }
         }
         else {
-          target = await ScsiTarget.create(this._createScsiTargetModel(actualTarget), {transaction: t});
+          target = await ScsiTarget.create(this._createScsiTargetModel(actualTarget, false), {transaction: t});
           await target.setCluster(cluster, {transaction: t});
         }
 
@@ -279,12 +304,44 @@ class ClusterUpdater {
         }
       }
 
-      if (!isPartialUpdate) {
+      if (!isPartialUpdate || forceUpdateMissing) {
         const missingTargets = targets.filter(x => !actualTargets.some(y => x.iqn === y.stringifiedIqn));
 
         for (const missingTarget of missingTargets) {
-          Object.assign(missingTarget, {status: ScsiTargetStatus.missing});
-          await missingTarget.save({transaction: t});
+          if (!missingTarget.suspended) {
+            Object.assign(missingTarget, {status: ScsiTargetStatus.missing});
+            await missingTarget.save({transaction: t});
+
+            const scsiHost = await missingTarget.getScsiHost({
+              include: [{
+                model: Host
+              }],
+              transaction: t
+            });
+            const rbdImage = await missingTarget.getRbdImage({transaction: t});
+            const luns = await missingTarget.getScsiLuns({transaction: t});
+
+            if (scsiHost && scsiHost.Host && rbdImage && luns && luns.length > 0) {
+              const target = {
+                name: missingTarget.name,
+                host: scsiHost.Host.hostName,
+                domain: missingTarget.domain,
+                image: rbdImage.image,
+                pool: rbdImage.pool,
+                size: luns[0].size,
+                usage: false,
+                timeout: ExtendedTimeout
+              };
+
+              const additionalLuns = luns.slice(1).map(x => x.size);
+
+              additionList.push({
+                target: target,
+                luns: additionalLuns,
+                scsiHost: scsiHost
+              });
+            }
+          }
         }
       }
 
@@ -292,6 +349,50 @@ class ClusterUpdater {
     });
 
     const result = await fn();
+
+    for (const actualTarget of deletionList) {
+      try {
+        await proxy.iscsi.del(actualTarget.iqn.name, false, {
+          host: actualTarget.host,
+          timeout: ExtendedTimeout,
+          usage: false
+        });
+      }
+      catch (err) {
+        logger.warn(ErrorFormatter.format(err));
+        if (warnAsError) {
+          throw err;
+        }
+      }
+    }
+
+    for (const {target, luns, scsiHost} of additionList) {
+      try {
+        await proxy.iscsi.add(target);
+
+        for (const size of luns) {
+          await proxy.iscsi.addLun(target.name, size, {
+            host: target.host,
+            timeout: ExtendedTimeout,
+            usage: false
+          });
+        }
+
+        const additionResult = await this.updateScsiTargets(cluster, proxy, [scsiHost.Host], {
+          targets: [target.name],
+          warnAsError: warnAsError,
+          forceUpdateMissing: false
+        });
+
+        result.push(additionResult.targets[0]);
+      }
+      catch (err) {
+        logger.warn(ErrorFormatter.format(err));
+        if (warnAsError) {
+          throw err;
+        }
+      }
+    }
 
     return {
       hosts: hosts.filter(x => x.status !== HostStatus.down),
@@ -784,7 +885,7 @@ class ClusterUpdater {
 
     for (const data of additionList) {
       try {
-        await proxy.samba.add(data.share, data.host.hostName, {timeout: ClusterUpdater.ExtendedTimeoutValue});
+        await proxy.samba.add(data.share, data.host.hostName, {timeout: ExtendedTimeout});
 
         const updatedShare = await this.updateSambaShares(cluster, proxy, [data.host], {
           shareNames: [data.share.name],

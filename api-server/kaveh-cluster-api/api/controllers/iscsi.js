@@ -160,7 +160,7 @@ async function formatScsiTarget(t, cluster, target) {
     })) : [],
     host: host ? host.hostName : '',
     cluster: cluster.name,
-    status: target.status
+    status: target.suspended ? 'suspended' : target.status
   };
 }
 
@@ -214,6 +214,68 @@ async function formatScsiHost(t, cluster, scsiHost) {
       status: HostStatus.up
     }
   };
+}
+
+async function suspendScsiTarget(req, res) {
+  const {
+    clusterName: {value: clusterName},
+    targetName: {value: targetName}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found in cluster "${clusterName}"`);
+  }
+
+  let scsiHost = null;
+  let target = null;
+
+  const preconditionChecker = restified.autocommit(async t => {
+    target = (await cluster.getScsiTargets({
+      where: {
+        name: targetName
+      },
+      include: [{
+        model: ScsiHost,
+        include: [{
+          model: Host
+        }]
+      }],
+      limit: 1,
+      offset: 0,
+      transaction: t
+    }))[0];
+
+    if (!target) {
+      throw new except.NotFoundError(`target "${targetName}" not found in cluster "${clusterName}"`);
+    }
+
+    scsiHost = target.ScsiHost;
+
+    if (!scsiHost || !scsiHost.Host) {
+      throw new except.NotFoundError(`target "${targetName}" is missing in cluster "${clusterName}"`);
+    }
+
+    target.suspended = true;
+    await target.save({transaction: t});
+  });
+
+  await preconditionChecker();
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+
+    });
+
+    return await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function refreshScsiShares(req, res) {
@@ -1060,7 +1122,8 @@ async function addScsiTarget(req, res) {
         image: image,
         pool: pool,
         size: size,
-        usage: false
+        usage: false,
+        timeout: ClusterUpdater.ExtendedTimeoutValue
       });
 
       const updater = new ClusterUpdater(clusterName);
