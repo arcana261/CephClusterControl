@@ -614,6 +614,8 @@ async function listRgwShares(t, req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found`);
   }
 
+  const total = await cluster.countRadosGatewayShares({transaction: t});
+
   const result = await cluster.getRadosGatewayShares({
     transaction: t,
     limit: length,
@@ -621,6 +623,7 @@ async function listRgwShares(t, req, res) {
   });
 
   res.json({
+    total: total,
     result: result.map(share => formatRgwShare(share))
   });
 }

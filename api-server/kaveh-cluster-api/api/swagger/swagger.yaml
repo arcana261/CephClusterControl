@@ -521,7 +521,13 @@ paths:
           description: returns list of rbd images
           schema:
             type: object
+            required:
+              - total
+              - result
             properties:
+              total:
+                type: integer
+                description: total number of records
               result:
                 type: array
                 items:
@@ -778,7 +784,13 @@ paths:
           description: returns list of RGW shares defined
           schema:
             type: object
+            required:
+              - total
+              - result
             properties:
+              total:
+                type: integer
+                description: total number of records
               result:
                 type: array
                 items:
@@ -1169,7 +1181,13 @@ paths:
           description: returns list of samba shares defined
           schema:
             type: object
+            required:
+              - total
+              - result
             properties:
+              total:
+                type: integer
+                description: total number of records
               result:
                 type: array
                 items:
@@ -1299,6 +1317,61 @@ paths:
           description: indicates that samba share was deleted successfuly
           schema:
             $ref: '#/definitions/EmptyObject'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+  /cluster/{clusterName}/samba/{shareName}/suspend:
+    x-swagger-router-controller: samba
+    parameters:
+      - $ref: '#/parameters/clusterName'
+      - $ref: '#/parameters/shareName'
+    post:
+      summary: suspendSambaShare
+      description: suspends a samba share
+      operationId: suspendSambaShare
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Samba
+      parameters:
+        - name: suspendData
+          in: body
+          required: true
+          description: empty object
+          schema:
+            $ref: '#/definitions/EmptyObject'
+      responses:
+        200:
+          description: indicates that samba share was successfuly blocked
+          schema:
+            $ref: '#/definitions/SambaShare'
+        404:
+          $ref: '#/responses/NotFound'
+        500:
+          $ref: '#/responses/InternalServerError'
+    delete:
+      summary: unsuspendSambaShare
+      description: un-suspend (unblock) samba share
+      operationId: unsuspendSambaShare
+      security:
+        - basic: []
+      x-required-role: user
+      tags:
+        - Samba
+      parameters:
+        - name: suspendData
+          in: body
+          required: true
+          description: empty object
+          schema:
+            $ref: '#/definitions/EmptyObject'
+      responses:
+        200:
+          description: indicates that samba share was successfuly un-blocked
+          schema:
+            $ref: '#/definitions/SambaShare'
         404:
           $ref: '#/responses/NotFound'
         500:
@@ -1666,7 +1739,13 @@ paths:
           description: returns list of iscsi targets defined
           schema:
             type: object
+            required:
+              - total
+              - result
             properties:
+              total:
+                type: integer
+                description: total number of records
               result:
                 type: array
                 items:
@@ -1726,7 +1805,13 @@ paths:
           description: returns list of hosts
           schema:
             type: object
+            required:
+              - total
+              - result
             properties:
+              total:
+                type: integer
+                description: total number of records
               result:
                 type: array
                 items:
@@ -2475,6 +2560,7 @@ definitions:
         enum:
           - up
           - missing
+          - suspended
   PerformancePoint:
     type: object
     description: shows performance collected

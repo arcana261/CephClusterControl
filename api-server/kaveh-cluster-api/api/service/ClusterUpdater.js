@@ -519,16 +519,18 @@ class ClusterUpdater {
 
   /**
    * @param {SambaShare} actualShare
+   * @param {boolean} suspended
    * @returns {SambaShareModel}
    * @private
    */
-  _createSambaShareModel(actualShare) {
+  _createSambaShareModel(actualShare, suspended) {
     return {
       name: actualShare.name,
       comment: actualShare.comment,
       browsable: actualShare.browsable,
       guest: SambaAuthUtils.stringifyPermission(actualShare.guest),
-      status: SambaStatus.up
+      status: SambaStatus.up,
+      suspended: suspended
     };
   }
 
@@ -537,12 +539,15 @@ class ClusterUpdater {
    * @param {Proxy} proxy
    * @param {Array.<HostModel>} hosts
    * @param {Array.<string>} shareNames
+   * @param {boolean} warnAsError
+   * @param {boolean} forceUpdateMissing
    * @returns {Promise.<{
    * hosts: Array.<HostModel>,
    * shares: Array.<SambaShareModel>
    * }>}
    */
-  async updateSambaShares(cluster, proxy, hosts, {shareNames = []} = {}) {
+  async updateSambaShares(cluster, proxy, hosts,
+                          {shareNames = [], warnAsError = false, forceUpdateMissing = false} = {}) {
     const filteredHosts = await (restified.autocommit(async t => {
       return (await Promise.all(hosts.map(async host => {
         const types = host.RpcTypes || (await host.getRpcTypes({transaction: t}));
@@ -569,6 +574,9 @@ class ClusterUpdater {
 
     this._triggerExceptionPoint();
 
+    const deletionList = [];
+    const additionList = [];
+
     const fn = restified.autocommit(async t => {
       const shares = updatePartially ?
         (await Promise.all(shareNames.map(async name => {
@@ -588,12 +596,16 @@ class ClusterUpdater {
         let share = shares.filter(x => x.name === actualShare.name)[0];
 
         if (!share) {
-          share = await SambaShare.create(this._createSambaShareModel(actualShare), {transaction: t});
+          share = await SambaShare.create(this._createSambaShareModel(actualShare, false), {transaction: t});
           await share.setCluster(cluster, {transaction: t});
         }
         else {
-          Object.assign(share, this._createSambaShareModel(actualShare));
+          Object.assign(share, this._createSambaShareModel(actualShare, share.suspended));
           await share.save({transaction: t});
+
+          if (share.suspended) {
+            deletionList.push(actualShare);
+          }
         }
 
         result.push(share);
@@ -700,15 +712,52 @@ class ClusterUpdater {
         }
       }
 
-      if (!updatePartially) {
+      if (!updatePartially || forceUpdateMissing) {
         const missingShares = shares.filter(x => !actualShares.some(y => x.name === y.name));
 
         for (const missingShare of missingShares) {
-          Object.assign(missingShare, {
-            status: SambaStatus.missing
-          });
+          if (!missingShare.suspended) {
+            Object.assign(missingShare, {
+              status: SambaStatus.missing
+            });
 
-          await missingShare.save({transaction: t});
+            await missingShare.save({transaction: t});
+
+            const host = await missingShare.getHost({transaction: t});
+            const rbdImage = await missingShare.getRbdImage({transaction: t});
+            const acls = await missingShare.getSambaAcls({
+              include: [{
+                model: SambaUser
+              }],
+              transaction: t
+            });
+
+            if (host && rbdImage) {
+              const share = {
+                image: rbdImage.image,
+                pool: rbdImage.pool,
+                id: 'admin',
+                guest: SambaAuthUtils.parsePermission(missingShare.guest),
+                acl: acls.map(x => ({
+                  [x.SambaUser.userName]: {
+                    permission: SambaAuthUtils.parsePermission(x.permission),
+                    password: x.SambaUser.password
+                  }
+                })).reduce((prev, cur) => Object.assign(prev, cur), {}),
+                name: missingShare.name,
+                comment: missingShare.comment,
+                browsable: missingShare.browsable,
+                capacity: null,
+                used: null,
+                host: host.hostName
+              };
+
+              additionList.push({
+                host: host,
+                share: share
+              });
+            }
+          }
         }
       }
 
@@ -716,6 +765,43 @@ class ClusterUpdater {
     });
 
     const result = await fn();
+
+    for (const actualShare of deletionList) {
+      try {
+        await proxy.samba.del(actualShare.name, {
+          host: actualShare.host,
+          timeout: ExtendedTimeout
+        });
+      }
+      catch (err) {
+        logger.warn(ErrorFormatter.format(err));
+
+        if (warnAsError) {
+          throw err;
+        }
+      }
+    }
+
+    for (const data of additionList) {
+      try {
+        await proxy.samba.add(data.share, data.host.hostName, {timeout: ClusterUpdater.ExtendedTimeoutValue});
+
+        const updatedShare = await this.updateSambaShares(cluster, proxy, [data.host], {
+          shareNames: [data.share.name],
+          warnAsError: warnAsError,
+          forceUpdateMissing: false
+        });
+
+        result.push(updatedShare.shares[0]);
+      }
+      catch (err) {
+        logger.warn(ErrorFormatter.format(err));
+
+        if (warnAsError) {
+          throw err;
+        }
+      }
+    }
 
     return {
       hosts: hosts.filter(host => host.status !== HostStatus.down),

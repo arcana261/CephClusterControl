@@ -84,7 +84,17 @@ module.exports = restified.make({
   /**
    * POST /cluster/{clusterName}/samba/refresh
    */
-  refreshSambaShares: refreshSambaShares
+  refreshSambaShares: refreshSambaShares,
+
+  /**
+   * POST /cluster/{clusterName}/samba/{shareName}/suspend
+   */
+  suspendSambaShare: suspendSambaShare,
+
+  /**
+   * DELETE /cluster/{clusterName}/samba/{shareName}/suspend
+   */
+  unsuspendSambaShare: unsuspendSambaShare
 });
 
 /**
@@ -116,7 +126,7 @@ async function formatSambaShare(t, cluster, share) {
     used: image ? image.used : 0,
     cluster: cluster.name,
     host: host ? host.hostName : '',
-    status: share.status,
+    status: share.suspended ? 'suspended' : share.status,
     guest: share.guest,
     acl: aclList.map(x => ({
       userName: x.SambaUser.userName,
@@ -124,6 +134,145 @@ async function formatSambaShare(t, cluster, share) {
       permission: x.permission
     }))
   };
+}
+
+async function suspendSambaShare(req, res) {
+  const {
+    clusterName: {value: clusterName},
+    shareName: {value: shareName}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found`);
+  }
+
+  let host = null;
+  let share = null;
+
+  const preconditionChecker = restified.autocommit(async t => {
+    share = (await cluster.getSambaShares({
+      where: {
+        name: shareName
+      },
+      include: [{
+        model: Host
+      }],
+      limit: 1,
+      offset: 0,
+      transaction: t
+    }))[0];
+
+    if (!share) {
+      throw new except.NotFoundError(`share "${shareName}" not found in cluster "${clusterName}"`);
+    }
+
+    host = share.Host;
+
+    if (!host) {
+      throw new except.NotFoundError(`share "${shareName}" is missing in cluster "${clusterName}"`);
+    }
+
+    share.suspended = true;
+    await share.save({transaction: t});
+  });
+
+  await preconditionChecker();
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateSambaShares(cluster, proxy, [host], {
+        shareNames: [shareName],
+        warnAsError: true,
+        forceUpdateMissing: true
+      });
+
+      const gn = restified.autocommit(async t => {
+        return formatSambaShare(t, cluster, result.shares[0] || share);
+      });
+
+      return await gn();
+    });
+
+    return await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
+}
+
+async function unsuspendSambaShare(req, res) {
+  const {
+    clusterName: {value: clusterName},
+    shareName: {value: shareName}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found`);
+  }
+
+  let host = null;
+
+  const preconditionChecker = restified.autocommit(async t => {
+    const share = (await cluster.getSambaShares({
+      where: {
+        name: shareName
+      },
+      include: [{
+        model: Host
+      }],
+      limit: 1,
+      offset: 0,
+      transaction: t
+    }))[0];
+
+    if (!share) {
+      throw new except.NotFoundError(`share "${shareName}" not found in cluster "${clusterName}"`);
+    }
+
+    host = share.Host;
+
+    if (!host) {
+      throw new except.NotFoundError(`share "${shareName}" is missing in cluster "${clusterName}"`);
+    }
+
+    share.suspended = false;
+    await share.save({transaction: t});
+  });
+
+  await preconditionChecker();
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateSambaShares(cluster, proxy, [host], {
+        shareNames: [shareName],
+        warnAsError: true,
+        forceUpdateMissing: true
+      });
+
+      const gn = restified.autocommit(async t => {
+        return formatSambaShare(t, cluster, result.shares[0]);
+      });
+
+      return await gn();
+    });
+
+    return await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
 }
 
 async function refreshSambaShares(req, res) {
@@ -1093,6 +1242,8 @@ async function listSambaShares(t, req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found`);
   }
 
+  const total = await cluster.countSambaShares({transaction: t});
+
   const shares = await cluster.getSambaShares({
     limit: length,
     start: start,
@@ -1105,7 +1256,8 @@ async function listSambaShares(t, req, res) {
   });
 
   res.json({
-    result: await Promise.all(shares.map(x => formatSambaShare(t, cluster, x)))
+    result: await Promise.all(shares.map(x => formatSambaShare(t, cluster, x))),
+    total: total
   });
 }
 

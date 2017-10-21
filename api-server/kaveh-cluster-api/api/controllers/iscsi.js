@@ -1129,6 +1129,8 @@ async function listScsiHosts(t, req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found in cluster "${clusterName}"`);
   }
 
+  const total = await cluster.countScsiHosts({transaction: t});
+
   const hosts = await cluster.getScsiHosts({
     include: [{
       model: Host,
@@ -1142,6 +1144,7 @@ async function listScsiHosts(t, req, res) {
   });
 
   res.json({
+    total: total,
     result: await Promise.all(hosts.map(host => formatScsiHost(t, cluster, host)))
   });
 }
@@ -1164,6 +1167,8 @@ async function listScsiTargets(t, req, res) {
     throw new except.NotFoundError(`cluster "${clusterName}" not found in cluster "${clusterName}"`);
   }
 
+  const total = await cluster.countScsiTargets({transaction: t});
+
   const targets = await cluster.getScsiTargets({
     include: [{
       model: ScsiLun
@@ -1181,6 +1186,7 @@ async function listScsiTargets(t, req, res) {
   });
 
   res.json({
+    total: total,
     result: await Promise.all(targets.map(target => formatScsiTarget(t, cluster, target)))
   });
 }

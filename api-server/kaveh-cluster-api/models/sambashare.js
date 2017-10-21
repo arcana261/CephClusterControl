@@ -10,6 +10,7 @@ const SambaStatus = require('../api/const/SambaStatus');
  * @property {boolean} browsable
  * @property {string} guest
  * @property {string} status
+ * @property {boolean} suspended
  */
 
 module.exports = (sequelize, DataTypes) => {
@@ -28,7 +29,8 @@ module.exports = (sequelize, DataTypes) => {
       validation: {
         isIn: [SambaStatus._]
       }
-    }
+    },
+    suspended: DataTypes.BOOLEAN
   }, {
     classMethods: {
     }

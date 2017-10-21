@@ -546,6 +546,13 @@ async function listRbdImages(t, req, res) {
     throw new except.NotFoundError(`cluster not found: "${clusterName}"`);
   }
 
+  const total = await cluster.countRbdImages({
+    transaction: t,
+    where: pool ? {
+      pool: pool
+    } : {}
+  });
+
   const images = await cluster.getRbdImages({
     transaction: t,
     limit: length,
@@ -556,6 +563,7 @@ async function listRbdImages(t, req, res) {
   });
 
   res.json({
+    total: total,
     result: await Promise.all(images.map(image => formatRbdImage(t, image)))
   });
 }
