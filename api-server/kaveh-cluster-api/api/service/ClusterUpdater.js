@@ -244,6 +244,13 @@ class ClusterUpdater {
             }));
           }
 
+          for (let k = 0; k < luns.length; k++) {
+            if (luns[k].index === null) {
+              luns[k].index = k;
+              await luns[k].save({transaction: t});
+            }
+          }
+
           while (i < luns.length && j < actualLunItems.length) {
             const lun = luns[i];
             const actualLun = actualLunItems[j];
@@ -305,7 +312,7 @@ class ClusterUpdater {
       }
 
       if (!isPartialUpdate || forceUpdateMissing) {
-        const missingTargets = targets.filter(x => !actualTargets.some(y => x.iqn === y.stringifiedIqn));
+        const missingTargets = dbTargets.filter(x => !actualTargets.some(y => x.iqn === y.stringifiedIqn));
 
         for (const missingTarget of missingTargets) {
           if (!missingTarget.suspended) {
@@ -330,10 +337,11 @@ class ClusterUpdater {
                 pool: rbdImage.pool,
                 size: luns[0].size,
                 usage: false,
-                timeout: ExtendedTimeout
+                timeout: ExtendedTimeout,
+                lunIndex: luns[0].index
               };
 
-              const additionalLuns = luns.slice(1).map(x => x.size);
+              const additionalLuns = luns.slice(1);
 
               additionList.push({
                 target: target,
@@ -370,11 +378,12 @@ class ClusterUpdater {
       try {
         await proxy.iscsi.add(target);
 
-        for (const size of luns) {
+        for (const {size, index} of luns) {
           await proxy.iscsi.addLun(target.name, size, {
             host: target.host,
             timeout: ExtendedTimeout,
-            usage: false
+            usage: false,
+            index: index
           });
         }
 
@@ -544,7 +553,7 @@ class ClusterUpdater {
       secretKey: actualShare.secretKey,
       hasQuota: actualShare.capacity > 0,
       capacity: actualShare.capacity > 0 ? Math.round(actualShare.capacity) : null,
-      used: actualShare.capacity > 0 ? Math.round(actualShare.used) : null,
+      used: actualShare.used > 0 ? Math.round(actualShare.used) : null,
       status: RadosGatewayShareStatus.up,
       suspended: actualShare.suspended
     };

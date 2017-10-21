@@ -94,7 +94,17 @@ module.exports = restified.make({
   /**
    * POST /cluster/{clusterName}/iscsi/refresh
    */
-  refreshScsiShares: refreshScsiShares
+  refreshScsiShares: refreshScsiShares,
+
+  /**
+   * POST /cluster/{clusterName}/iscsi/{targetName}/suspend
+   */
+  suspendScsiTarget: suspendScsiTarget,
+
+  /**
+   * DELETE /cluster/{clusterName}/iscsi/{targetName}/suspend
+   */
+  unsuspendScsiTarget: unsuspendScsiTarget
 });
 
 /**
@@ -269,7 +279,91 @@ async function suspendScsiTarget(req, res) {
 
   const result = await Retry.run(async () => {
     const fn = cluster.autoclose(async proxy => {
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateScsiTargets(cluster, proxy, [scsiHost.Host], {
+        targets: [targetName],
+        warnAsError: true,
+        forceUpdateMissing: true
+      });
 
+      const gn = restified.autocommit(async t => {
+        return formatScsiTarget(t, cluster, result.targets[0] || target);
+      });
+
+      return await gn();
+    });
+
+    return await fn();
+  }, config.server.retry_wait, config.server.retry, err => logger.warn(ErrorFormatter.format(err)));
+
+  res.json(result);
+}
+
+async function unsuspendScsiTarget(req, res) {
+  const {
+    clusterName: {value: clusterName},
+    targetName: {value: targetName}
+  } = req.swagger.params;
+
+  const cluster = await Cluster.findOne({
+    where: {
+      name: clusterName
+    }
+  });
+
+  if (!cluster) {
+    throw new except.NotFoundError(`cluster "${clusterName}" not found in cluster "${clusterName}"`);
+  }
+
+  let scsiHost = null;
+  let target = null;
+
+  const preconditionChecker = restified.autocommit(async t => {
+    target = (await cluster.getScsiTargets({
+      where: {
+        name: targetName
+      },
+      include: [{
+        model: ScsiHost,
+        include: [{
+          model: Host
+        }]
+      }],
+      limit: 1,
+      offset: 0,
+      transaction: t
+    }))[0];
+
+    if (!target) {
+      throw new except.NotFoundError(`target "${targetName}" not found in cluster "${clusterName}"`);
+    }
+
+    scsiHost = target.ScsiHost;
+
+    if (!scsiHost || !scsiHost.Host) {
+      throw new except.NotFoundError(`target "${targetName}" is missing in cluster "${clusterName}"`);
+    }
+
+    target.suspended = false;
+    await target.save({transaction: t});
+  });
+
+  await preconditionChecker();
+
+  const result = await Retry.run(async () => {
+    const fn = cluster.autoclose(async proxy => {
+      const updater = new ClusterUpdater(clusterName);
+      const result = await updater.updateScsiTargets(cluster, proxy, [scsiHost.Host], {
+        targets: [targetName],
+        warnAsError: true,
+        forceUpdateMissing: true
+      });
+
+      const gn = restified.autocommit(async t => {
+        return formatScsiTarget(t, cluster, result.targets[0]);
+      });
+
+      return await gn();
     });
 
     return await fn();
@@ -353,7 +447,7 @@ async function deleteScsiTargetLun(req, res) {
     clusterName: {value: clusterName},
     targetName: {value: targetName},
     lun: {value: {
-      index: index,
+      index: index = 0,
       destroyData: destroyData = false
     }}
   } = req.swagger.params;

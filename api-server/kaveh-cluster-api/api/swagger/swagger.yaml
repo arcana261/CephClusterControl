@@ -2185,13 +2185,10 @@ paths:
           required: true
           schema:
             type: object
-            required:
-              - index
             properties:
               index:
                 type: integer
                 description: index of lun to delete
-                minimum: 0
               destroyData:
                 type: boolean
                 description: whether to destroy data as well (this is irreversible)
